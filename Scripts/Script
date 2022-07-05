@@ -160,6 +160,15 @@ ggplot(porcentaje_na[1:nrow(porcentaje_na),],
 #que las personas puede que no paguen arriendo o amortización. 
 #Asimismo la variable de experiencia tiene un gran porcentaje de missing values por lo que se eliminará
 
+filtro2 <- porcentaje_na$cantidad_na > 0.15
+variables_eliminadas <- porcentaje_na$variable[filtro2]
+finaldata_clean <- finaldata %>%
+  dplyr::select(-variables_eliminadas) 
+k0 <- ncol(finaldata)
+k1 <- ncol(finaldata_clean)
+print(paste("Se eliminaron", k0-k1, "variables. Ahora la base tiene", k1, "columnas."))
+
+
 ##Para las variables de educación máxima alcanzada por un miembro del hogar y promedio de horas trabajadas
 ##Se verificará en los modelos de qué manera los missing values afectan las estimaciones 
 ##A partir de esto, se verificará si se imputan o no los datos.
@@ -304,6 +313,12 @@ stargazer(ModeloGeneral, type ="text")
 #nearest5 <- knn(train=x[-test,], test=x[test,], cl=finaldata$type[-test], k=5)
 #data.frame(finaldata$type[test],nearest1,nearest5)
 
+
+##Sobre esta regresión
+mylogit <- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
+               data = hogares_train, family = "binomial")
+test$phat<- predict(mylogit, test, type="response")
+
 credx <- model.matrix(Pobre ~ .^2, data=hogares_train)
 dim(credx)
 
@@ -326,12 +341,6 @@ sum( (pred<rule)[default==1] )/sum(pred<rule) ## false negative rate
 sum( (pred>rule)[default==1] )/sum(default==1) ## sensitivity
 
 sum( (pred<rule)[default==0] )/sum(default==0) ## specificity
-
-
-##Sobre esta regresión
-mylogit <- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
-               data = hogares_train, family = "binomial")
-test$phat<- predict(mylogit, test, type="response")
 
 test$Pobre_hat<-ifelse(test$phat>.5,1,0)
 with(test,prop.table(table(Pobre,Pobre_hat)))
@@ -505,6 +514,9 @@ ggarrange(p1, p2, p3, p4, p5, nrow = 3, ncol = 2)
 ##Para identificar los predictores que efectivamente van en el modelo y los que no se aplica Lasso
 ##Se analizan las variables para identificar correlaciones y posibles problemas a la hora de
 ##Utilizar modelos de regresión lineal 
+finaldatatrain <- sapply(finaldata, is.numeric)
+finaldatatrain <- na.omit(hogares_train)
+
 hogares_correlaciones <- finaldata %>%
   correlate(method = "pearson") %>%
   stretch(remove.dups = TRUE)
