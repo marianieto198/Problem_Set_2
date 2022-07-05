@@ -1,0 +1,763 @@
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%    Data Cleaning    		          %
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+##Paquetes 
+rm(list = ls())
+install.packages("devtools")
+require("pacman")
+install.packages("ggpubr")
+library(faraway)
+library(tidyverse)
+library(skimr)
+#devtools::install_github("boxuancui/DataExplorer")
+library(DataExplorer)
+library(scales)
+library(corrr)
+library("MASS")
+library("class")
+library("dplyr") #for data wrangling
+library("gamlr")
+library("ROCR") #Roc
+library(dplyr)
+library(glmnet)
+library(pls)
+devtools::install_github("thomasp85/patchwork")
+p_load(rvest)
+p_load(rio) 
+p_load(tidyverse)
+p_load(e1071) 
+p_load(EnvStats) 
+p_load(tidymodels) 
+p_load(ggplot2) 
+p_load(scales) 
+p_load(ggpubr) 
+p_load(knitr) 
+p_load(kableExtra)
+p_load(broom)
+p_load(caret)
+library(patchwork)
+
+##Se leen y almacenan las bases de datos
+train_individual <- readRDS("data 2/train_personas.Rds")
+
+dim(train_individual)
+str(train_individual)
+
+##La base de entrenamiento de personas cuenta con 135 variables y 543584 observaciones
+
+train_hogares <- readRDS("data 2/train_hogares.Rds")
+head(train_hogares[c("Pobre")])
+
+dim(train_hogares)
+str(train_hogares)
+
+##La base de entrenamiento de hogares cuenta con 23 variables y 164960 observaciones
+
+test_individual <- readRDS("data 2/test_personas.Rds")
+dim(test_individual)
+str(test_individual)
+
+##La base de testeo de personas cuenta con 63variables y 219169 observaciones
+
+
+test_hogares <- readRDS("data 2/test_hogares.Rds")
+dim(test_hogares)
+str(test_hogares)
+##La base de testeo de hogares cuenta con 16 variables y 66168 observaciones
+
+##Teniendo en cuenta que en la base de testeo solo hay 16 variables, en los modelos a
+##plantear con la base de entrenamiento únicamente se tendran en cuenta estas variables
+#Se verifica entonces cuáles variables tienen en común
+
+vth <- ls(train_hogares)
+vtsh <- ls(test_hogares)
+Coincidencias <- list()
+
+for(i in 1:length(vtsh)){
+  for(j in 1:length(vth)){
+    if (vtsh[i]==vth[j]){
+      Coincidencias <- append(Coincidencias, vtsh[i])
+    }
+  }
+}
+Coincidencias
+
+##Se observa que la base de test no tiene construida la variable dicótoma de "Pobre"
+#La línea de pobreza monetaria per cápita nacional en  2018 fue $257.433, en el caso de un hogar de 4 personas fue $1.029.732
+##Estadísticas descriptivas de los datos
+
+##Se crean variables en el train de hogares a patir del train de personas que pueden ayudar a la estimación de la pobreza
+
+train_individual <- train_individual %>%
+  group_by(id)  %>%
+  mutate(P6040c = mean(P6040, na.rm = TRUE)) 
+
+train_individual <- train_individual %>%
+  group_by(id)  %>%
+  mutate(P6800c = mean(P6800, na.rm = TRUE)) 
+  
+train_individual <- mutate(train_individual,
+                           P6426c = case_when(
+                             P6050==1  ~ P6426, 
+                             P6050!=1  ~ NA_real_))    
+
+train_individual <- train_individual %>%
+  group_by(id)  %>%
+  mutate(P6210c = max(P6210))
+
+collapse1 <- summaryBy(P6040c + Estrato1+ P6800c + P6426c + P6210c ~ id, FUN=c(mean), data=train_individual)    
+finaldata <- merge(train_hogares, collapse1, by="id")
+
+#Comenzamos con las variables del train de hogares que serán las que principalmente se van a utilizar
+##Tratamiento de missing values
+
+cantidad_na <- sapply(finaldata, function(x) sum(is.na(x))) #Una función que me suma el número de NAs por variable
+cantidad_na <- data.frame(cantidad_na) #Lo convierto en Data Frame
+porcentaje_na <- cantidad_na/nrow(finaldata) #Le saco el porcentaje de Missing values a cada variable
+
+# Porcentaje de observaciones faltantes. 
+porcentaje <- mean(porcentaje_na[,1]) 
+print(paste0("En promedio el ", round(porcentaje*100, 2), "% de las entradas están vacías"))
+
+##"En promedio el 11.59% de las entradas están vacías"
+
+##Ordenamos de mayor a menor
+porcentaje_na <- arrange(porcentaje_na, desc(cantidad_na))
+# Convertimos el nombre de la fila en columna
+porcentaje_na <- rownames_to_column(porcentaje_na, "variable")
+
+# Quitamos las variables que no tienen NAs
+filtro <- porcentaje_na$cantidad_na == 0
+variables_sin_na <- porcentaje_na[filtro, "variable"]
+str_count(variables_sin_na) #Hay 21 variables sin NA
+variables_sin_na <- paste(variables_sin_na, collapse = ", ")
+print(paste("Las variables sin NAs son:", variables_sin_na))
+
+##Las variables sin NAs son: id, Clase, Dominio, P5000, P5010, P5090, Nper, Npersug, Ingtotug, Ingtotugarr, 
+#Ingpcug, Li, Lp, Pobre, Indigente, Npobres, Nindigentes, Fex_c, Depto, Fex_dpto, P6040c.mean"
+porcentaje_na <- porcentaje_na[!filtro,] #Quedan solo 6 variables con NAs
+
+orden <- porcentaje_na$variable[length(porcentaje_na$variable):1] #Se vuelven caracteres
+porcentaje_na$variable <- factor(porcentaje_na$variable,
+                                 levels = orden) #Se utilizan como factores para poder graficar
+
+str(porcentaje_na) # Se revisa el tipo de variables
+
+# Como son tantas variables vamos a hacer una gráfica con los que tienen menos NAs
+#para analizar si se pueden imputar los valores
+
+ggplot(porcentaje_na[1:nrow(porcentaje_na),], 
+       aes(y = variable, x = cantidad_na)) +
+  geom_bar(stat = "identity", fill = "darkslategray3") +
+  geom_text(aes(label = paste0(round(100*cantidad_na, 1), "%")),
+            colour = "white", position = "dodge", hjust = 1.3,
+            size = 2, fontface = "bold") +
+  theme_classic() +
+  labs(x = "Porcentaje de NAs", y = "Variables") +
+  scale_x_continuous(labels = scales::percent, limits = c(0, 1))
+
+##Se observa que las variables que tienen mayor cantidad de missings son aquellas en las 
+#que las personas puede que no paguen arriendo o amortización. 
+#Asimismo la variable de experiencia tiene un gran porcentaje de missing values por lo que se eliminará
+
+##Para las variables de educación máxima alcanzada por un miembro del hogar y promedio de horas trabajadas
+##Se verificará en los modelos de qué manera los missing values afectan las estimaciones 
+##A partir de esto, se verificará si se imputan o no los datos.
+
+##En búsqueda de valores atípicos se realizan gráficos de cajas y análisis de correlaciones
+
+##Distribución número de cuartos
+d1 <- ggplot(finaldata, aes(y = P5000)) +
+  geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
+  theme_classic() +
+  labs(y = "Número de cuartos") +
+  scale_x_discrete( ) 
+
+##Distribución ingresos totales
+d2 <- ggplot(finaldata, aes(y = Ingtotugarr)) +
+  geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
+  theme_classic() +
+  labs(y = "Ingresos totales") +
+  scale_y_continuous(labels = scales::dollar) +
+  scale_x_discrete( ) 
+
+##Distribución ingresos totales per cápita
+d3 <- ggplot(finaldata, aes(y = Ingpcug)) +
+  geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
+  theme_classic() +
+  labs(y = "Ingresos totales per cápita") +
+  scale_y_continuous(labels = scales::dollar) +
+  scale_x_discrete( ) 
+
+##Distribución Número de personas en el hogar
+d4 <- ggplot(finaldata, aes(y = Nper)) +
+  geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
+  theme_classic() +
+  labs(y = "Número de personas") +
+  scale_y_continuous(labels = scales::dollar) +
+  scale_x_discrete( ) 
+
+ggarrange(d1, d2, d3, d4, d5, nrow = 3, ncol = 2)
+(d1 | d2) /
+  (d3 | d4)
+
+
+##Distribución educación
+d5 <- ggplot(finaldata, aes(as.factor(P6210c.mean), Ingtotugarr)) +
+  geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
+  theme_classic() +
+  labs(y = "Ingresos totales") +
+  scale_y_continuous() +
+  scale_x_discrete( ) 
+d5
+##Distribución por ingreso y pobreza
+d6 <- ggplot(finaldata, aes(as.factor(Pobre), Ingtotugarr)) +
+  geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
+  theme_classic() +
+  labs(y = "Ingreso total") +
+  scale_y_continuous() +
+  scale_x_discrete( ) 
+
+d7 <- ggplot(finaldata, aes(as.factor(Clase), Ingtotugarr)) +
+  geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
+  theme_classic() +
+  labs(y = "Ingreso total") +
+  scale_y_continuous() +
+  scale_x_discrete( ) 
+
+(d7 | d6) /
+  (d5)
+
+by1 <- ggplot(data=finaldata) +
+  geom_histogram(mapping=aes(x=Ingtotugarr , group= as.factor(Pobre), fill=as.factor(Pobre))) + 
+  theme_classic()
+by1 + scale_fill_manual(values =c("0"="darkslategray3", "1"="blue"), label=c("0"="No Pobre", "1"="Pobre"), name="Sexo")
+
+by2 <- ggplot(data=finaldata) +
+  geom_histogram(mapping=aes(x=Ingtotugarr , group= as.factor(P6210c.mean), fill=as.factor(P6210c.mean))) + 
+  theme_classic()
+by2 + scale_fill_manual(values =c("1"="darkslategray3", "2"="blue", "3"="aquamarine4", "4"="azure3", "5"="chartreuse4", "6"="chocolate3", "9"="coral2"), 
+                        label=c("1"="Ninguno", "2"="Preescolar", "3"="Básica Primaria", "4"="Básica Secundaria", "5"="Media", "6"="Superior o universitaria", "9"="No sabe"), name="Nivel Educativo")
+
+
+#Tablas
+
+vartable <- st(finaldata, vars = c('Ingtotugarr','Ingpcug', 'P5000', 'Nper'), labels = c("Ingresos Totales", "Ingresos Totales per cápita", "Cuartos", "Personas del Hogar"))
+
+
+##Correlaciones
+# Primero seleccionamos las columnas numéricas
+#Se obtienen las correlaciones
+correla <- finaldata[c('Ingtotugarr','Ingpcug', 'P5000', 'Nper')]
+mcor <- round(cor(correla[, unlist(lapply(correla, is.numeric))]),2)
+#Se mantiene toda la tabla
+upper<-mcor
+upper[upper.tri(mcor)]<-""
+upper<-as.data.frame(upper)
+
+corrplot(cor(correla[, unlist(lapply(correla, is.numeric))]))
+write_xlsx(upper,"Correla.xlsx")
+
+
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%    Classification Models   		          %
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+index <-  round(nrow(finaldata)*0.3,digits=0)
+#Muestra aleatorizada del  dataset y mantener el número de observaciones del indice
+test.indices <- sample(1:nrow(finaldata), index)
+# set de entrenamiento
+hogares_train<-finaldata[-test.indices,] 
+#30% set de testeo
+hogares_test<-finaldata[test.indices,] 
+#Seleccionar el set de entrenamiento en variables independientes y dependientes
+YTrain <- hogares_train$Pobre
+XTrain <- hogares_train %>% dplyr::select(-Pobre)
+#Seleccionar el set de testeo en variables independientes y dependientes
+YTest <- hogares_test$Pobre
+XTest <- hogares_test %>% dplyr::select(- Pobre)
+
+#Regresion de solo el intercepto
+Modelobase <- glm(Pobre ~ 1, data = hogares_train)
+stargazer(Modelobase, type ="text")
+mean(hogares_train$Ingtotugarr)
+
+
+#El intercepto es la media de los ingresos totales de las personas (2300900)
+#Ahora estimamos nuestros modelos planteados
+#Modelo General
+ModeloGeneral<- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean), data = hogares_train)
+stargazer(ModeloGeneral, type ="text")
+
+##K-nearest neighbors
+
+#Se estandarizan los datos 
+
+#x <- scale(fgl[,1:28]) 
+#apply(x,2,sd)
+
+
+#set.seed(1010101)
+#test <- sample(1:214,10)
+#nearest1 <- knn(train=x[-test,], test=x[test,], cl=finaldata$type[-test], k=1)
+#nearest5 <- knn(train=x[-test,], test=x[test,], cl=finaldata$type[-test], k=5)
+#data.frame(finaldata$type[test],nearest1,nearest5)
+
+credx <- model.matrix(Pobre ~ .^2, data=hogares_train)
+dim(credx)
+
+credx <- sparse.model.matrix( Pobre ~ .^2, data=hogares_train)[,-1]
+head(credx)
+
+Pobre <- credit$Pobre
+Pobertyscore <- cv.gamlr(credx, Pobre, family="binomial", verb=TRUE)
+plot(credscore)
+
+pred <- predict(Pobertyscore$gamlr, credx, type="response")
+pred <- drop(pred) # remove the sparse Matrix formatting
+boxplot(pred ~ Pobre, xlab="Pobre", ylab="prob de Pobreza", col=c("pink","dodgerblue"))
+
+rule <- 1/2
+sum( (pred>rule)[default==0] )/sum(pred>rule) ## false positive rate
+
+sum( (pred<rule)[default==1] )/sum(pred<rule) ## false negative rate
+
+sum( (pred>rule)[default==1] )/sum(default==1) ## sensitivity
+
+sum( (pred<rule)[default==0] )/sum(default==0) ## specificity
+
+
+##Sobre esta regresión
+mylogit <- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
+               data = hogares_train, family = "binomial")
+test$phat<- predict(mylogit, test, type="response")
+
+test$Pobre_hat<-ifelse(test$phat>.5,1,0)
+with(test,prop.table(table(Pobre,Pobre_hat)))
+
+pred <- prediction(test$phat, test$Pobre)
+roc_ROCR <- performance(pred,"tpr","fpr")
+plot(roc_ROCR, main = "ROC curve", colorize = T)
+abline(a = 0, b = 1)
+
+auc_ROCR <- performance(pred, measure = "auc")
+auc_ROCR@y.values[[1]]
+
+mylda <- lda(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
+             data = hogares_train)
+mylda
+
+phat_mylda<- predict(mylda, test, type="response")
+pred_mylda <- prediction(phat_mylda$posterior[,2], test$Pobre)
+roc_mylda <- performance(pred_mylda,"tpr","fpr")
+plot(roc_mylda, main = "ROC curve", colorize = T)
+abline(a = 0, b = 1)
+
+plot(roc_ROCR, main = "ROC curve", colorize = FALSE, col="red")
+plot(roc_mylda,add=TRUE, colorize = FALSE, col="blue")
+abline(a = 0, b = 1)
+
+auc_ROCR <- performance(pred, measure = "auc")
+auc_ROCR_lda_simple <- performance(pred_mylda, measure = "auc")
+auc_ROCR@y.values[[1]]
+
+auc_ROCR_lda_simple@y.values[[1]]
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%    Income Regression Models 		          %
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+##Se busca cuál es el mejor subset 
+require("leaps")
+
+##Esto no puede ser realizada con una gran cantidad de observaciones 
+best<-regsubsets(Pobre ~ ., method="exhaustive",data = finaldata)
+summary(best)
+
+##Ahora, para comparar los resultados del subset se utilizan otras alternativas de estimación de éste.
+forward <- train(Pobre ~ ., data = finaldata,
+                 method = "leapForward",
+                 trControl = trainControl(method = "cv", number = 10))
+forward
+
+summary(forward$finalModel)
+
+backwards <- train(Pobre ~ ., data = matchdata,
+                   method = "leapBackward",
+                   trControl = trainControl(method = "cv", number = 10))
+backwards
+
+summary(backwards$finalModel)
+
+##Para correr el modelo de Pobreza se verifica la mejor manera de plantear la variable dependiente
+# Primero seleccionamos las columnas numéricas
+filtro <- sapply(finaldata, is.numeric)
+sk <- sapply(finaldata[, filtro], skewness, na.rm = T)
+
+# Vamos a buscar las variables con las mayores asimetrías sin importar la dirección
+sk_abs <- abs(sk)
+sk_abs <- data.frame(sk_abs)
+sk_abs <- rownames_to_column(sk_abs, "variable")
+sk_abs <- arrange(sk_abs, desc(sk_abs))
+
+# Las variables con mayor asimetría son:
+head(sk_abs)
+
+head(sk_abs)
+
+hist(finaldata$Ingtotugarr)
+
+# Construimos el vector de los ingresos y eliminamos los NAs 
+x <- finaldata$Ingtotugarr[!is.na(finaldata$Ingtotugarr)]
+x <- finaldata$Ingtotugarr[finaldata$Ingtotugarr!=0]
+sk_x <- skewness(x)
+print(paste("El valor de skewness para los ingresos totales es", round(sk_x, 2)))
+##El Skewness es de 5.6
+
+x <- log(finaldata$Ingtotugarr[!is.na(finaldata$Ingtotugarr)])
+x <- finaldata$Ingtotugarr[finaldata$Ingtotugarr!=0]
+sk_x <- skewness(x)
+print(paste("El valor de skewness para los ingresos totales es", round(sk_x, 2)))
+
+##Al realizar la distribución logarítmica el skewness es el mismo
+
+# Vamos a aplicar diferentes transformaciones y a visualizar como cambia el skewness
+# Encontrar lambda óptimo
+lambda <- boxcox(x, objective.name = "Log-Likelihood", 
+                 optimize = TRUE)$lambda
+box_cox_x <- boxcoxTransform(x, lambda)
+
+ing_totimputado <- data.frame("Ingresos totales" = x,
+                      "Logaritmo" = log(x),
+                      "Raiz cuadrada" = sqrt(x),
+                      "Inversa" = 1/x,
+                      "Box-Cox" = box_cox_x)
+
+
+# Observemos la distribución original
+p1 <- ggplot(ing_totimputado) +
+  geom_histogram(aes(x = Ingresos.totales, 
+                     fill = "Ingresos totales"), 
+                 alpha = 0.5, fill = "gray", bins = 30) +
+  geom_text(aes(x = Inf, y = Inf, hjust = 1, 
+                vjust = 1, 
+                label = paste("Skewness", round(sk_x, 2)))) +
+  theme_classic() +
+  labs(x = "Ingresos totales", y = "Cantidad") +
+  scale_x_continuous(labels = scales::dollar)
+
+sk_x2 <- skewness(ing_totimputado$Logaritmo)
+p2 <- ggplot(ing_totimputado) +
+  geom_histogram(aes(x = Logaritmo, 
+                     fill = "Logaritmo"), 
+                 alpha = 0.5, fill = "blue", bins = 30) +
+  geom_text(aes(x = Inf, y = Inf, hjust = 1, 
+                vjust = 1, 
+                label = paste("Skewness", round(sk_x2, 2)))) +
+  theme_classic() +
+  labs(x = "Log(Ingresos totales)", y = "Cantidad") 
+
+sk_x3 <- skewness(ing_totimputado$Raiz.cuadrada)
+p3 <- ggplot(ing_totimputado) +
+  geom_histogram(aes(x = Raiz.cuadrada, 
+                     fill = "Raíz cuadrada"), 
+                 alpha = 0.5, fill = "red", bins = 30) +
+  geom_text(aes(x = Inf, y = Inf, hjust = 1, 
+                vjust = 1, 
+                label = paste("Skewness", round(sk_x3, 2)))) +
+  theme_classic() +
+  labs(x = "Raiz cuadrada de Ingresos totales", y = "Cantidad") 
+
+sk_x4 <- skewness(ing_totimputado$Inversa)
+p4 <- ggplot(ing_totimputado) +
+  geom_histogram(aes(x = Inversa, 
+                     fill = "Inversa"), 
+                 alpha = 0.5, fill = "green", bins = 30) +
+  geom_text(aes(x = Inf, y = Inf, hjust = 1, 
+                vjust = 1, 
+                label = paste("Skewness", round(sk_x4, 2)))) +
+  theme_classic() +
+  labs(x = "1/(Ingresos totales)", y = "Cantidad")
+
+sk_x5 <- skewness(ing_totimputado$Box.Cox)
+p5 <- ggplot(ing_totimputado) +
+  geom_histogram(aes(x = Box.Cox, 
+                     fill = "Box-Cox"), 
+                 alpha = 0.5, fill = "purple", bins = 30) +
+  geom_text(aes(x = Inf, y = Inf, hjust = 1, 
+                vjust = 1, 
+                label = paste("Skewness", round(sk_x5, 2)))) +
+  theme_classic() +
+  labs(x = "Transformacion Box-Cox de Ingresos totales", 
+       y = "Cantidad")
+
+ggarrange(p1, p2, p3, p4, p5, nrow = 3, ncol = 2)
+
+##U otra opción es 
+
+(p1 | p2 | p3) /
+  (p4 | p5)
+
+##Se concluye que la variable dependiente con un menor skewness es con la distribución 
+
+
+##Para identificar los predictores que efectivamente van en el modelo y los que no se aplica Lasso
+##Se analizan las variables para identificar correlaciones y posibles problemas a la hora de
+##Utilizar modelos de regresión lineal 
+hogares_correlaciones <- finaldata %>%
+  correlate(method = "pearson") %>%
+  stretch(remove.dups = TRUE)
+
+correlaciones <- hogares_correlaciones %>% 
+  mutate(r_abs = abs(r)) %>% 
+  arrange(desc(r_abs)) %>%
+  mutate(r_abs = replace_na(r_abs, 0))
+
+sum(correlaciones$r_abs > 0.8)/nrow(correlaciones)
+
+##Creación del modelo
+
+modelo <- glm(Pobreza ~ ., data = hogares_train)
+summary(modelo)
+
+hogares_coeficientes <- modelo$coefficients %>%
+  enframe(name = "predictor", value = "coeficiente")
+
+hogares_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() +
+  labs(title = "Coeficientes del modelo OLS") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 5, angle = 45))
+
+# Predicciones de entrenamiento
+predicciones_train <- predict(modelo, newdata = hogares_train)
+
+# 
+training_mse <- mean((predicciones_train - hogares_train$Pobre)^2)
+paste("Error (mse) de entrenamiento:", training_mse)
+
+# Predicciones de test
+predicciones_test <- predict(modelo, newdata = hogares_test)
+
+# MSE de test
+test_mse_ols <- mean((predicciones_test - hogares_test$Pobre)^2)
+paste("Error (mse) de test:", test_mse_ols)
+
+# Creación y entrenamiento del modelo
+# Para obtener un ajuste con regularización Ridge se indica argumento alpha=0.
+# Si no se especifica valor de lambda, se selecciona un rango automático.
+modelo <- glmnet(
+  x           = x_train,
+  y           = y_train,
+  alpha       = 0,
+  nlambda     = 100,
+  standardize = TRUE
+)
+
+regularizacion <- modelo$beta %>% 
+  as.matrix() %>%
+  t() %>% 
+  as_tibble() %>%
+  mutate(lambda = modelo$lambda)
+
+regularizacion <- regularizacion %>%
+  pivot_longer(
+    cols = !lambda, 
+    names_to = "predictor",
+    values_to = "coeficientes"
+  )
+
+regularizacion %>%
+  ggplot(aes(x = lambda, y = coeficientes, color = predictor)) +
+  geom_line() +
+  scale_x_log10(
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
+  labs(title = "Coeficientes del modelo en función de la regularización") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+# Evolución del error en función de lambda
+set.seed(123)
+cv_error <- cv.glmnet(
+  x      = x_train,
+  y      = y_train,
+  alpha  = 0,
+  nfolds = 10,
+  type.measure = "mse",
+  standardize  = TRUE
+)
+
+plot(cv_error)
+
+# Mejor valor lambda encontrado
+paste("Mejor valor de lambda encontrado:", cv_error$lambda.min)
+
+# Mayor valor de lambda con el que el test-error no se aleja más de 1sd del mínimo.
+paste("Mejor valor de lambda encontrado + 1 desviación estándar:", cv_error$lambda.1se)
+
+# Mejor modelo lambda óptimo + 1sd
+modelo <- glmnet(
+  x           = x_train,
+  y           = y_train,
+  alpha       = 0,
+  lambda      = cv_error$lambda.1se,
+  standardize = TRUE
+)
+
+# Coeficientes del modelo
+hogares_coeficientes <- coef(modelo) %>%
+  as.matrix() %>%
+  as_tibble(rownames = "predictor") %>%
+  rename(coeficiente = s0)
+
+hogares_coeficientes %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() +
+  labs(title = "Coeficientes del modelo Ridge") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 6, angle = 45))
+
+# Predicciones de entrenamiento
+predicciones_train <- predict(modelo, newx = x_train)
+
+# MSE de entrenamiento
+training_mse <- mean((predicciones_train - y_train)^2)
+paste("Error (mse) de entrenamiento:", training_mse)
+
+# Predicciones de test
+
+predicciones_test <- predict(modelo, newx = x_test)
+
+# MSE de test
+test_mse_ridge <- mean((predicciones_test - y_test)^2)
+paste("Error (mse) de test:", test_mse_ridge)
+## Lasso y ridge son sesgados, pero las disminuciones en varianza pueden compensar esto y llevar a un MSE menor
+
+#:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+##A partir de los resultados y de la teoría económica se definen los modelos:
+
+##Modelo 0
+model3<-lm(price~bedrooms+bathrooms+centair+fireplace+brick,data=train)
+test$model3<-predict(model3,newdata = test)
+with(test,mean((price-model3)^2))
+
+
+#Modelo 1
+set.seed(10101)
+p_load("caret")
+trControl_1 <- trainControl(method  = "cv",
+                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+
+Modelo1_cv <- train(logIng ~ female + estrato1 + p6426 + maxEducLevel,
+                    data = geih.train,
+                    trControl = trControl_1,
+                    method = "lm")
+Modelo1_cv
+Modelo1_cv_Yhat <- predict(Modelo1_cv, XTest)
+RMSE_Modelo1_cv <- sqrt(sum((Modelo1_cv_Yhat-logYtest)^2)/length(logYtest))
+
+#Modelo 2
+set.seed(10101)
+trControl_2 <- trainControl(method  = "cv",
+                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+
+Modelo2_cv <- train(logIng ~ female + p6426 + maxEducLevel + female*maxEducLevel,
+                    data = geih.train,
+                    trControl = trControl_2,
+                    method = "lm")
+Modelo2_cv
+Modelo2_cv_Yhat <- predict(Modelo2_cv, XTest)
+RMSE_Modelo2_cv <- sqrt(sum((Modelo2_cv_Yhat-logYtest)^2)/length(logYtest))
+
+#Modelo 3
+set.seed(10101)
+trControl_3 <- trainControl(method  = "cv",
+                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+
+Modelo3_cv <- train(logIng ~ female + p6426 + age + age2 + p6426*age,
+                    data = geih.train,
+                    trControl = trControl_3,
+                    method = "lm")
+Modelo3_cv
+Modelo3_cv_Yhat <- predict(Modelo3_cv, XTest)
+RMSE_Modelo3_cv <- sqrt(sum((Modelo3_cv_Yhat-logYtest)^2)/length(logYtest))
+
+#Modelo 4
+set.seed(10101)
+trControl_4 <- trainControl(method  = "cv",
+                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+
+Modelo4_cv <- train(logIng ~ female + p6426 + informal + p6240 + p7090 + totalHoursWorked2 + totalHoursWorked3,
+                    data = geih.train,
+                    trControl = trControl_4,
+                    method = "lm")
+Modelo4_cv
+Modelo4_cv_Yhat <- predict(Modelo4_cv, XTest)
+RMSE_Modelo4_cv <- sqrt(sum((Modelo4_cv_Yhat-logYtest)^2)/length(logYtest))
+
+#Modelo 5
+set.seed(10101)
+trControl_5 <- trainControl(method  = "cv",
+                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+
+Modelo5_cv <- train(logIng ~ female + p6426 + totalHoursWorked + age + totalHoursWorked*female + p7090*female,
+                    data = geih.train,
+                    trControl = trControl_5,
+                    method = "lm")
+Modelo5_cv
+Modelo5_cv_Yhat <- predict(Modelo5_cv, XTest)
+RMSE_Modelo5_cv <- sqrt(sum((Modelo5_cv_Yhat-logYtest)^2)/length(logYtest))
+
+#Sigue siendo mejor el modelo 4
+RMSE_CVs <- c(RMSE_Modelo1_cv, RMSE_Modelo2_cv, RMSE_Modelo3_cv, RMSE_Modelo4_cv, RMSE_Modelo5_cv)
+
+#Revisamos los alphas del Modelo 4:
+Resid_j_CV <- (logYtest - Modelo4_cv_Yhat)
+Alpha_j_CV <- (Resid_j_CV)/(1-h_j)
+Df_Cv_M4 <- data.frame(logYtest, Modelo4_cv_Yhat, h_j, Resid_j_CV, Alpha_j_CV)
+#Mismo comportamiento, las observaciones con altos h_j no influyen en la muestra
+
+
+##Graph MSE by Fitted models 
+
+##Hallar el precision y el recall para cada modelo
+
+mylogit <- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
+               data = hogares_train, family = "binomial")
+test$phat<- predict(mylogit, test, type="response")
+
+test$Pobre_hat<-ifelse(test$phat>.5,1,0)
+with(test,prop.table(table(Default,Pobre_hat)))
+
+pred <- prediction(test$phat, test$Pobre)
+roc_ROCR <- performance(pred,"tpr","fpr")
+plot(roc_ROCR, main = "ROC curve", colorize = T)
+abline(a = 0, b = 1)
+
+auc_ROCR <- performance(pred, measure = "auc")
+auc_ROCR@y.values[[1]]
+
+mylda <- lda(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean), data = hogares_train)
+mylda
+
+phat_mylda<- predict(mylda, test, type="response")
+pred_mylda <- prediction(phat_mylda$posterior[,2], test$Pobre)
+roc_mylda <- performance(pred_mylda,"tpr","fpr")
+plot(roc_mylda, main = "ROC curve", colorize = T)
+abline(a = 0, b = 1)
+
+plot(roc_ROCR, main = "ROC curve", colorize = FALSE, col="red")
+plot(roc_mylda,add=TRUE, colorize = FALSE, col="blue")
+abline(a = 0, b = 1)
+
+auc_ROCR <- performance(pred, measure = "auc")
+auc_ROCR_lda_simple <- performance(pred_mylda, measure = "auc")
+auc_ROCR@y.values[[1]]
+
+auc_ROCR_lda_simple@y.values[[1]]
