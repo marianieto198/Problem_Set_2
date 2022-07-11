@@ -456,7 +456,8 @@ p_load(fastDummies)
 
 filtro <- !sapply(TrainDF_clean, is.numeric)
 categoricas <- names(TrainDF_clean)[filtro]
-categoricas <- categoricas[2:13]
+categoricas <- categoricas[c(2, 5, 6, 7, 9, 10, 11, 12, 13)]
+
 
 for (var in categoricas) {
   frecuencia <- prop.table(table(TrainDF[, var]))
@@ -474,7 +475,7 @@ TrainDF_clean <- dummy_cols(TrainDF_clean, select_columns = categoricas,
 #Ahora en el set de Test
 filtro <- !sapply(testDF, is.numeric)
 categoricas <- names(testDF)[filtro]
-categoricas <- categoricas[2:13]
+categoricas <- categoricas[c(2, 5, 6, 7, 9, 10, 11, 12, 13)]
 
 for (var in categoricas) {
   frecuencia <- prop.table(table(testDF[, var]))
@@ -506,6 +507,21 @@ XTrain <- hogares_train %>% dplyr::select(-Pobre)
 #Seleccionar el set de testeo en variables independientes y dependientes
 YTest <- hogares_test$Pobre
 XTest <- hogares_test %>% dplyr::select(- Pobre)
+
+#Balancear la muestra de pobres
+#Paquete que me hace el resamsampling teniendo en cuenta la proporción 50-50
+p_load(ROSE)
+hogares_train <- dplyr::select(hogares_train, -id, -Dominio, -Depto, -OfJefe)
+hogares_train$Pobre <- as.numeric(hogares_train$Pobre)
+hogares_train_bal <- ovun.sample(Pobre ~ ., data = hogares_train, method="both", p=0.5, seed = 1948)
+hogares_train_bal <- hogares_train_bal$data
+table(hogares_train_bal$Pobre)
+hogares_train_bal <- dplyr::select(hogares_train_bal, -Ingtotug, -Ingpcug, )
+YTrain_bal <- hogares_train_bal$Pobre
+XTrain_bal <- dplyr::select(hogares_train_bal, -Pobre)
+
+
+
 
 #Regresion de solo el intercepto
 Modelobase <- glm(Pobre ~ 1, data = hogares_train)
