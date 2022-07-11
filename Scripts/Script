@@ -84,36 +84,20 @@ Coincidencias
 
 ##Se observa que la base de test no tiene construida la variable dicótoma de "Pobre"
 #La línea de pobreza monetaria per cápita nacional en  2018 fue $257.433, en el caso de un hogar de 4 personas fue $1.029.732
+
+∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 76-179∞∞∞∞∞∞∞∞∞∞∞∞∞
+
+
+
 ##Estadísticas descriptivas de los datos
 
-##Se crean variables en el train de hogares a patir del train de personas que pueden ayudar a la estimación de la pobreza
-
-train_individual <- train_individual %>%
-  group_by(id)  %>%
-  mutate(P6040c = mean(P6040, na.rm = TRUE)) 
-
-train_individual <- train_individual %>%
-  group_by(id)  %>%
-  mutate(P6800c = mean(P6800, na.rm = TRUE)) 
-  
-train_individual <- mutate(train_individual,
-                           P6426c = case_when(
-                             P6050==1  ~ P6426, 
-                             P6050!=1  ~ NA_real_))    
-
-train_individual <- train_individual %>%
-  group_by(id)  %>%
-  mutate(P6210c = max(P6210))
-
-collapse1 <- summaryBy(P6040c + Estrato1+ P6800c + P6426c + P6210c ~ id, FUN=c(mean), data=train_individual)    
-finaldata <- merge(train_hogares, collapse1, by="id")
 
 #Comenzamos con las variables del train de hogares que serán las que principalmente se van a utilizar
 ##Tratamiento de missing values
 
-cantidad_na <- sapply(finaldata, function(x) sum(is.na(x))) #Una función que me suma el número de NAs por variable
+cantidad_na <- sapply(TrainDF, function(x) sum(is.na(x))) #Una función que me suma el número de NAs por variable
 cantidad_na <- data.frame(cantidad_na) #Lo convierto en Data Frame
-porcentaje_na <- cantidad_na/nrow(finaldata) #Le saco el porcentaje de Missing values a cada variable
+porcentaje_na <- cantidad_na/nrow(TrainDF) #Le saco el porcentaje de Missing values a cada variable
 
 # Porcentaje de observaciones faltantes. 
 porcentaje <- mean(porcentaje_na[,1]) 
@@ -133,9 +117,8 @@ str_count(variables_sin_na) #Hay 21 variables sin NA
 variables_sin_na <- paste(variables_sin_na, collapse = ", ")
 print(paste("Las variables sin NAs son:", variables_sin_na))
 
-##Las variables sin NAs son: id, Clase, Dominio, P5000, P5010, P5090, Nper, Npersug, Ingtotug, Ingtotugarr, 
-#Ingpcug, Li, Lp, Pobre, Indigente, Npobres, Nindigentes, Fex_c, Depto, Fex_dpto, P6040c.mean"
-porcentaje_na <- porcentaje_na[!filtro,] #Quedan solo 6 variables con NAs
+##Las variables sin NAs son 18
+porcentaje_na <- porcentaje_na[!filtro,] #Quedan solo 46 variables con NAs
 
 orden <- porcentaje_na$variable[length(porcentaje_na$variable):1] #Se vuelven caracteres
 porcentaje_na$variable <- factor(porcentaje_na$variable,
@@ -158,32 +141,36 @@ ggplot(porcentaje_na[1:nrow(porcentaje_na),],
 
 ##Se observa que las variables que tienen mayor cantidad de missings son aquellas en las 
 #que las personas puede que no paguen arriendo o amortización. 
-#Asimismo la variable de experiencia tiene un gran porcentaje de missing values por lo que se eliminará
+
+
+∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 230-236∞∞∞∞∞∞∞∞∞∞∞∞∞
+
+
 
 filtro2 <- porcentaje_na$cantidad_na > 0.15
 variables_eliminadas <- porcentaje_na$variable[filtro2]
-finaldata_clean <- finaldata %>%
+TrainDF_clean <- TrainDF %>%
   dplyr::select(-variables_eliminadas) 
-k0 <- ncol(finaldata)
-k1 <- ncol(finaldata_clean)
+k0 <- ncol(TrainDF)
+k1 <- ncol(TrainDF_clean)
 print(paste("Se eliminaron", k0-k1, "variables. Ahora la base tiene", k1, "columnas."))
 
+∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 248-310∞∞∞∞∞∞∞∞∞∞∞∞∞
 
-##Para las variables de educación máxima alcanzada por un miembro del hogar y promedio de horas trabajadas
-##Se verificará en los modelos de qué manera los missing values afectan las estimaciones 
-##A partir de esto, se verificará si se imputan o no los datos.
+
+
 
 ##En búsqueda de valores atípicos se realizan gráficos de cajas y análisis de correlaciones
 
 ##Distribución número de cuartos
-d1 <- ggplot(finaldata, aes(y = P5000)) +
+d1 <- ggplot(TrainDF_clean, aes(y = P5000)) +
   geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
   theme_classic() +
   labs(y = "Número de cuartos") +
   scale_x_discrete( ) 
 
 ##Distribución ingresos totales
-d2 <- ggplot(finaldata, aes(y = Ingtotugarr)) +
+d2 <- ggplot(TrainDF_clean, aes(y = Ingtotugarr)) +
   geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
   theme_classic() +
   labs(y = "Ingresos totales") +
@@ -191,7 +178,7 @@ d2 <- ggplot(finaldata, aes(y = Ingtotugarr)) +
   scale_x_discrete( ) 
 
 ##Distribución ingresos totales per cápita
-d3 <- ggplot(finaldata, aes(y = Ingpcug)) +
+d3 <- ggplot(TrainDF_clean, aes(y = Ingpcug)) +
   geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
   theme_classic() +
   labs(y = "Ingresos totales per cápita") +
@@ -199,7 +186,7 @@ d3 <- ggplot(finaldata, aes(y = Ingpcug)) +
   scale_x_discrete( ) 
 
 ##Distribución Número de personas en el hogar
-d4 <- ggplot(finaldata, aes(y = Nper)) +
+d4 <- ggplot(TrainDF_clean, aes(y = Nper)) +
   geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
   theme_classic() +
   labs(y = "Número de personas") +
@@ -210,9 +197,13 @@ ggarrange(d1, d2, d3, d4, d5, nrow = 3, ncol = 2)
 (d1 | d2) /
   (d3 | d4)
 
+#Pobre
+ggplot(TrainDF_clean, aes(Pobre)) + geom_bar()
+prop.table(table(TrainDF_clean$Pobre))
+
 
 ##Distribución educación
-d5 <- ggplot(finaldata, aes(as.factor(P6210c.mean), Ingtotugarr)) +
+d5 <- ggplot(TrainDF_clean, aes(as.factor(P6210c.mean), Ingtotugarr)) +
   geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
   theme_classic() +
   labs(y = "Ingresos totales") +
@@ -220,14 +211,14 @@ d5 <- ggplot(finaldata, aes(as.factor(P6210c.mean), Ingtotugarr)) +
   scale_x_discrete( ) 
 d5
 ##Distribución por ingreso y pobreza
-d6 <- ggplot(finaldata, aes(as.factor(Pobre), Ingtotugarr)) +
+d6 <- ggplot(TrainDF_clean, aes(as.factor(Pobre), Ingtotugarr)) +
   geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
   theme_classic() +
   labs(y = "Ingreso total") +
   scale_y_continuous() +
   scale_x_discrete( ) 
 
-d7 <- ggplot(finaldata, aes(as.factor(Clase), Ingtotugarr)) +
+d7 <- ggplot(TrainDF_clean, aes(as.factor(Clase), Ingtotugarr)) +
   geom_boxplot(fill = "darkslategray3", alpha = 0.5) +
   theme_classic() +
   labs(y = "Ingreso total") +
@@ -237,12 +228,12 @@ d7 <- ggplot(finaldata, aes(as.factor(Clase), Ingtotugarr)) +
 (d7 | d6) /
   (d5)
 
-by1 <- ggplot(data=finaldata) +
+by1 <- ggplot(data=TrainDF_clean) +
   geom_histogram(mapping=aes(x=Ingtotugarr , group= as.factor(Pobre), fill=as.factor(Pobre))) + 
   theme_classic()
 by1 + scale_fill_manual(values =c("0"="darkslategray3", "1"="blue"), label=c("0"="No Pobre", "1"="Pobre"), name="Sexo")
 
-by2 <- ggplot(data=finaldata) +
+by2 <- ggplot(data=TrainDF_clean) +
   geom_histogram(mapping=aes(x=Ingtotugarr , group= as.factor(P6210c.mean), fill=as.factor(P6210c.mean))) + 
   theme_classic()
 by2 + scale_fill_manual(values =c("1"="darkslategray3", "2"="blue", "3"="aquamarine4", "4"="azure3", "5"="chartreuse4", "6"="chocolate3", "9"="coral2"), 
@@ -251,13 +242,13 @@ by2 + scale_fill_manual(values =c("1"="darkslategray3", "2"="blue", "3"="aquamar
 
 #Tablas
 
-vartable <- st(finaldata, vars = c('Ingtotugarr','Ingpcug', 'P5000', 'Nper'), labels = c("Ingresos Totales", "Ingresos Totales per cápita", "Cuartos", "Personas del Hogar"))
+vartable <- st(TrainDF_clean, vars = c('Ingtotugarr','Ingpcug', 'P5000', 'Nper'), labels = c("Ingresos Totales", "Ingresos Totales per cápita", "Cuartos", "Personas del Hogar"))
 
 
 ##Correlaciones
 # Primero seleccionamos las columnas numéricas
 #Se obtienen las correlaciones
-correla <- finaldata[c('Ingtotugarr','Ingpcug', 'P5000', 'Nper')]
+correla <- TrainDF_clean[c('Ingtotugarr','Ingpcug', 'P5000', 'Nper')]
 mcor <- round(cor(correla[, unlist(lapply(correla, is.numeric))]),2)
 #Se mantiene toda la tabla
 upper<-mcor
@@ -266,6 +257,9 @@ upper<-as.data.frame(upper)
 
 corrplot(cor(correla[, unlist(lapply(correla, is.numeric))]))
 write_xlsx(upper,"Correla.xlsx")
+
+
+∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 352-408∞∞∞∞∞∞∞∞∞∞∞∞∞
 
 
 
