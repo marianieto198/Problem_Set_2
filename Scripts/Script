@@ -85,8 +85,113 @@ Coincidencias
 ##Se observa que la base de test no tiene construida la variable dicótoma de "Pobre"
 #La línea de pobreza monetaria per cápita nacional en  2018 fue $257.433, en el caso de un hogar de 4 personas fue $1.029.732
 
-∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 76-179∞∞∞∞∞∞∞∞∞∞∞∞∞
 
+#---------Limpieza de los datos-------------------------------------------
+
+#Se puede observar que las bases no tienen el mismo número de variables
+#Primero vamos a dejar las variables que están en las dos bases train y test incluyendo las de pobres, e ingresos totales
+train_individual <- train_individual %>% dplyr::select(colnames(test_individual), Ingtot)
+train_hogares <- train_hogares %>% dplyr::select(colnames(test_hogares), Ingtotug, Ingpcug, Pobre)
+
+
+#Ahora se convertiran en factores las que son necesarias
+train_individual <- train_individual %>%
+  mutate_at(.vars = c(
+    "P6050", "P6090", "P6210", "P6240", "Oficio", "P6430", "P6510", "P6545",
+    "P6580", "P6585s1", "P6585s2", "P6585s3", "P6585s4", "P6590", "P6600", 
+    "P6610", "P6620", "P6630s1", "P6630s2", "P6630s3", "P6630s4", "P6630s6",
+    "P6800", "P6920", "P7040", "P7045", "P7090", "P7495", "Pet", "Oc", "Des", "Ina"),
+    .funs = factor)
+
+test_individual <- test_individual %>%
+  mutate_at(.vars = c(
+    "P6050", "P6090", "P6210", "P6240", "Oficio", "P6430", "P6510", "P6545",
+    "P6580", "P6585s1", "P6585s2", "P6585s3", "P6585s4", "P6590", "P6600", 
+    "P6610", "P6620", "P6630s1", "P6630s2", "P6630s3", "P6630s4", "P6630s6",
+    "P6800", "P6920", "P7040", "P7045", "P7090", "P7495", "Pet", "Oc", "Des", "Ina"),
+    .funs = factor)
+
+#Volvemos P6020 Dummie para Mujer
+train_individual <- train_individual %>% dplyr::rename(Mujer = P6020)
+train_individual <- train_individual %>% mutate(Mujer = ifelse(Mujer == 2, 1, 0))
+
+test_individual <- test_individual %>% dplyr::rename(Mujer = P6020)
+test_individual <- test_individual %>% mutate(Mujer = ifelse(Mujer == 2, 1, 0))
+
+
+#Cambiamos el nombre de P6040 por Edad
+train_individual <- train_individual %>% dplyr::rename(Edad = P6040)
+test_individual <- test_individual %>% dplyr::rename(Edad = P6040)
+
+#Ahora se comprueba si la suma de los ingresos totales de los individuos del hogar es igual al del hogar como tal
+prueba <- train_individual %>%
+          group_by(id) %>%
+          summarise(ingresostothogar = sum(Ingtot, na.rm = T))
+                    
+prueba2 <- left_join(prueba, train_hogares , by = "id") 
+prueba2 <- prueba2 %>% dplyr::select(id, Ingtotug, ingresostothogar)
+prueba2 <- prueba2 %>% mutate(Igual = Ingtotug == ingresostothogar)
+table(prueba2$Igual)
+prop.table(table(prueba2$Igual))
+
+#Solamente el dos porciento de los hogares tiene ingresos diferentes y es por poco. Por lo que se puede asumir que la suma de los ingresos es correcta
+
+#Ahora se verificará si los ingresos del jefe del hogar son la mayor proporción de los ingresos del hogar para verificar si es necesario introducir más variables
+#De los demás miembros del hogar
+IngresosJefeHogar <- train_individual %>% dplyr::select(id, Orden, P6050, Ingtot) %>%
+                    filter(P6050 == 1)
+prueba2 <- left_join(prueba2, IngresosJefeHogar , by = "id")
+prueba2$ProporcionIngresosJefe <- prueba2$Ingtot/prueba2$Ingtotug
+mean(prueba2$ProporcionIngresosJefe, na.rm = T)
+
+#Los ingresos del jefe de hogar en promedio son del 65% de los ingresos totales
+#Esto muestra que se puede incluir solo la información de la cabeza del hogar para determinar si el hogar es pobre o no
+#En el modelo
+#Del jefe del hogar se incluirán todas las variables, de la segunda persona el sexo, la edad, la educación, p6240, ocu, des, ina, P6920
+TrainJefeHogar <- train_individual %>% filter(Orden == 1)
+
+#Solo estas variables
+TrainJefeHogar <- TrainJefeHogar %>% dplyr::select(id, Mujer, Edad, P6090, P6210, P6240, Oficio, P6426, P6430, P6510, P6545,
+                                P6580, P6585s1, P6585s2, P6585s3, P6585s4, P6590, P6600,  
+                                P6610, P6620, P6630s1, P6630s2, P6630s3, P6630s4, P6630s6,
+                                P6800, P6920, P7040, P7045, P7090, P7495, Pet, Oc, Des, Ina)
+#Cambiamos nombres
+TrainJefeHogar <- TrainJefeHogar %>% dplyr::rename(JejeMujer = Mujer, EdadJefe = Edad, SSJefe = P6090, EducacionJefe = P6210, ActividadJefe = P6240, OfJefe = Oficio, 
+                                                   TiempoEmpresaJefe = P6426, TipoTrabajoJefe = P6430,  JefeHorasExtras = P6510, JefePrimas = P6545,
+                                                   BonosJefe = P6580, SubAliJefe = P6585s1, SubTranJefe = P6585s2, SubFamiliarJefe = P6585s3, SubEducativo = P6585s4, 
+                                                   AlimentosJefe = P6590, ViviendaJefe = P6600, 
+                                                   TransporteJefe = P6610, EspecieJefe = P6620, PrmJefe= P6630s1, NavidadJefe = P6630s2, 
+                                                   VacacionesJefe = P6630s3, ViaticosJefe = P6630s4, BonosAnJefe = P6630s6,
+                                                   HorasTrabJefe = P6800, PensionJefe = P6920, SegundTrabajoJefe = P7040, horassecJefe =P7045, 
+                                                   QuiereMasHorasJefe = P7090, ArriendosPenJefe = P7495)
+
+#Se une con la base de hogares
+TrainDF <- left_join(train_hogares, TrainJefeHogar, by = "id")
+
+#Hacer lo mismo para el test
+testJefeHogar <- test_individual %>% filter(Orden == 1)
+
+#Solo estas variables
+testJefeHogar <- testJefeHogar %>% dplyr::select(id, Mujer, Edad, P6090, P6210, P6240, Oficio, P6426, P6430, P6510, P6545,
+                                                   P6580, P6585s1, P6585s2, P6585s3, P6585s4, P6590, P6600,  
+                                                   P6610, P6620, P6630s1, P6630s2, P6630s3, P6630s4, P6630s6,
+                                                   P6800, P6920, P7040, P7045, P7090, P7495, Pet, Oc, Des, Ina)
+#Cambiamos nombres
+testJefeHogar <- testJefeHogar %>% dplyr::rename(JejeMujer = Mujer, EdadJefe = Edad, SSJefe = P6090, EducacionJefe = P6210, ActividadJefe = P6240, OfJefe = Oficio, 
+                                                   TiempoEmpresaJefe = P6426, TipoTrabajoJefe = P6430,  JefeHorasExtras = P6510, JefePrimas = P6545,
+                                                   BonosJefe = P6580, SubAliJefe = P6585s1, SubTranJefe = P6585s2, SubFamiliarJefe = P6585s3, SubEducativo = P6585s4, 
+                                                   AlimentosJefe = P6590, ViviendaJefe = P6600, 
+                                                   TransporteJefe = P6610, EspecieJefe = P6620, PrmJefe= P6630s1, NavidadJefe = P6630s2, 
+                                                   VacacionesJefe = P6630s3, ViaticosJefe = P6630s4, BonosAnJefe = P6630s6,
+                                                   HorasTrabJefe = P6800, PensionJefe = P6920, SegundTrabajoJefe = P7040, horassecJefe =P7045, 
+                                                   QuiereMasHorasJefe = P7090, ArriendosPenJefe = P7495)
+
+#Se une con la base de hogares
+testDF <- left_join(test_hogares, testJefeHogar, by = "id")
+
+
+#Borramos algunos DF para liberar espacio
+remove(testJefeHogar, TrainJefeHogar, prueba, prueba2, IngresosJefeHogar)
 
 
 ##Estadísticas descriptivas de los datos
@@ -143,11 +248,18 @@ ggplot(porcentaje_na[1:nrow(porcentaje_na),],
 #que las personas puede que no paguen arriendo o amortización. 
 
 
-∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 230-236∞∞∞∞∞∞∞∞∞∞∞∞∞
+##Se observa que las variables que tienen mayor cantidad de missings son aquellas en las 
+#que las personas puede que no paguen arriendo o amortización. 
+#Se creará una variable que combine P5130 y P5140 como arriendos
+TrainDF$Arriendo = ifelse(is.na(TrainDF$P5130)==F, TrainDF$P5130, TrainDF$P5140)
+testDF$Arriendo = ifelse(is.na(testDF$P5130)==F, testDF$P5130, testDF$P5140)
 
+#Tambien se actualizaran las de ocupados
+TrainDF$OcupadoJefe = ifelse(is.na(TrainDF$Oc)==F, 1, 0)
+testDF$OcupadoJefe = ifelse(is.na(testDF$Oc)==F, 1, 0)
 
-
-filtro2 <- porcentaje_na$cantidad_na > 0.15
+#Asimismo la variable de experiencia tiene un gran porcentaje de missing values por lo que se eliminará
+filtro2 <- porcentaje_na$cantidad_na > 0.30
 variables_eliminadas <- porcentaje_na$variable[filtro2]
 TrainDF_clean <- TrainDF %>%
   dplyr::select(-variables_eliminadas) 
@@ -155,9 +267,67 @@ k0 <- ncol(TrainDF)
 k1 <- ncol(TrainDF_clean)
 print(paste("Se eliminaron", k0-k1, "variables. Ahora la base tiene", k1, "columnas."))
 
-∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 248-310∞∞∞∞∞∞∞∞∞∞∞∞∞
+#EliminarUnasVariables que no se usarán
+TrainDF_clean <- TrainDF_clean %>% dplyr::select(-Fex_c, -Fex_dpto, -Li, -Pet, -Oc)
+
+#Se imputaran las variables de NA
+tibble(TrainDF_clean)
+summary(TrainDF_clean)
+str(TrainDF_clean)
+#Se revisa que si las personas no están ocupadas hay un número significativo de NAs. Entonces, cuando este
+#sea el caso los valores de las variables relacionadas con eso se volveran el menor factor, es decir, 0.
+table(TrainDF_clean$OfJefe)
+
+cantidad_na <- sapply(TrainDF_clean, function(x) sum(is.na(x))) #Una función que me suma el número de NAs por variable
+cantidad_na <- data.frame(cantidad_na) #Lo convierto en Data Frame
+porcentaje_na <- cantidad_na/nrow(TrainDF_clean) #Le saco el porcentaje de Missing values a cada variable
+
+#Factor 0 para los no ocupados en Oficio
+view(filter(TrainDF_clean, OcupadoJefe==0)) #Todos son NAs
+
+TrainDF_clean$OfJefe<- as.numeric(TrainDF_clean$OfJefe)
+TrainDF_clean$OfJefe <- ifelse(TrainDF_clean$OcupadoJefe == 0, 0, TrainDF_clean$OfJefe)
+TrainDF_clean$OfJefe<- as.factor(TrainDF_clean$OfJefe)
+
+TrainDF_clean$TiempoEmpresaJefe <- ifelse(TrainDF_clean$OcupadoJefe == 0, 0, TrainDF_clean$TiempoEmpresaJefe)
+TrainDF_clean$TipoTrabajoJefe <- ifelse(TrainDF_clean$OcupadoJefe == 0, "0", TrainDF_clean$TipoTrabajoJefe)
+TrainDF_clean$HorasTrabJefe <- as.numeric(TrainDF_clean$HorasTrabJefe)
+TrainDF_clean$HorasTrabJefe <- ifelse(TrainDF_clean$OcupadoJefe == 0, 0, TrainDF_clean$HorasTrabJefe)
+TrainDF_clean$PensionJefe <- ifelse(TrainDF_clean$OcupadoJefe == 0, "2", TrainDF_clean$PensionJefe)
+TrainDF_clean$SegundTrabajoJefe <- ifelse(TrainDF_clean$OcupadoJefe == 0, "2", TrainDF_clean$SegundTrabajoJefe)
+TrainDF_clean$QuiereMasHorasJefe <- ifelse(TrainDF_clean$OcupadoJefe == 0, "2", TrainDF_clean$QuiereMasHorasJefe)
+
+cantidad_na <- sapply(TrainDF_clean, function(x) sum(is.na(x))) #Una función que me suma el número de NAs por variable
+cantidad_na <- data.frame(cantidad_na) #Lo convierto en Data Frame
+porcentaje_na <- cantidad_na/nrow(TrainDF_clean) #Le saco el porcentaje de Missing values a cada variable
+view(filter(TrainDF_clean, is.na(PensionJefe)==T))
+
+#Cambiar las NAs faltantes según su análisis
+TrainDF_clean <- mutate(TrainDF_clean, PensionJefe = ifelse(is.na(PensionJefe)==T, "2", PensionJefe))
+TrainDF_clean <- mutate(TrainDF_clean, SSJefe = ifelse(is.na(SSJefe)==T, "2", SSJefe))
+TrainDF_clean <- mutate(TrainDF_clean, ActividadJefe = ifelse(is.na(ActividadJefe)==T, "6", ActividadJefe))
+TrainDF_clean <- mutate(TrainDF_clean, ArriendosPenJefe = ifelse(is.na(ArriendosPenJefe)==T, "2", ArriendosPenJefe))
+
+#La Base ya está limpia
+variables_clean <- colnames(TrainDF_clean)
+variables_clean <- variables_clean[-11]
+variables_clean <- variables_clean[-11]
+variables_clean <- variables_clean[-11]
+
+testDF <- dplyr::select(testDF, variables_clean)
 
 
+testDF$OfJefe<- as.numeric(testDF$OfJefe)
+testDF$OfJefe <- ifelse(testDF$OcupadoJefe == 0, 0, testDF$OfJefe)
+testDF$OfJefe<- as.factor(testDF$OfJefe)
+
+testDF$TiempoEmpresaJefe <- ifelse(testDF$OcupadoJefe == 0, 0, testDF$TiempoEmpresaJefe)
+testDF$TipoTrabajoJefe <- ifelse(testDF$OcupadoJefe == 0, "0", testDF$TipoTrabajoJefe)
+testDF$HorasTrabJefe <- as.numeric(testDF$HorasTrabJefe)
+testDF$HorasTrabJefe <- ifelse(testDF$OcupadoJefe == 0, 0, testDF$HorasTrabJefe)
+testDF$PensionJefe <- ifelse(testDF$OcupadoJefe == 0, "2", testDF$PensionJefe)
+testDF$SegundTrabajoJefe <- ifelse(testDF$OcupadoJefe == 0, "2", testDF$SegundTrabajoJefe)
+testDF$QuiereMasHorasJefe <- ifelse(testDF$OcupadoJefe == 0, "2", testDF$QuiereMasHorasJefe)
 
 
 ##En búsqueda de valores atípicos se realizan gráficos de cajas y análisis de correlaciones
@@ -259,8 +429,64 @@ corrplot(cor(correla[, unlist(lapply(correla, is.numeric))]))
 write_xlsx(upper,"Correla.xlsx")
 
 
-∞∞∞∞∞∞∞∞∞∞∞∞∞ACÁ AGREGAR LÍNEAS DE SCRIPT 352-408∞∞∞∞∞∞∞∞∞∞∞∞∞
+#Pobre
+ggplot(TrainDF_clean, aes(Pobre)) + geom_bar()
+prop.table(table(TrainDF_clean$Pobre))
 
+#La base está desbalanceada. Es necesario hacer un balanceo de muestra cuando se corran los modelos
+glimpse(TrainDF_clean)
+
+TrainDF_clean <- TrainDF_clean %>%
+  mutate_at(.vars = c(
+    "TipoTrabajoJefe", "PensionJefe", "SegundTrabajoJefe", "QuiereMasHorasJefe"),
+    .funs = factor)
+
+testDF <- testDF %>%
+  mutate_at(.vars = c(
+    "TipoTrabajoJefe", "PensionJefe", "SegundTrabajoJefe", "QuiereMasHorasJefe"),
+    .funs = factor)
+
+
+TablaEstadiscticas <- TrainDF_clean %>%
+  skim()
+
+
+#Vamos a volver Dummies las variables categoricas
+p_load(fastDummies)
+
+filtro <- !sapply(TrainDF_clean, is.numeric)
+categoricas <- names(TrainDF_clean)[filtro]
+categoricas <- categoricas[2:13]
+
+for (var in categoricas) {
+  frecuencia <- prop.table(table(TrainDF[, var]))
+  len <- nrow(frecuencia)
+  print(paste("Cantidad de valores únicos para la variable", var, "son:", len))
+  frecuencia <- round(100*frecuencia, 1)
+  print(frecuencia)
+}
+
+TrainDF_clean <- dummy_cols(TrainDF_clean, select_columns = categoricas,
+                remove_first_dummy = T,
+                remove_selected_columns = T)
+
+
+#Ahora en el set de Test
+filtro <- !sapply(testDF, is.numeric)
+categoricas <- names(testDF)[filtro]
+categoricas <- categoricas[2:13]
+
+for (var in categoricas) {
+  frecuencia <- prop.table(table(testDF[, var]))
+  len <- nrow(frecuencia)
+  print(paste("Cantidad de valores únicos para la variable", var, "son:", len))
+  frecuencia <- round(100*frecuencia, 1)
+  print(frecuencia)
+}
+
+testDF <- dummy_cols(testDF, select_columns = categoricas,
+                            remove_first_dummy = T,
+                            remove_selected_columns = T)
 
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
