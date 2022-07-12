@@ -494,6 +494,88 @@ testDF <- dummy_cols(testDF, select_columns = categoricas,
 #%    Classification Models   		          %
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+#-------------1 Modelo Random Forest
+
+set.seed(1948)
+index <-  round(nrow(TrainDF_clean)*0.3,digits=0)
+#Muestra aleatorizada del  dataset y mantener el número de observaciones del indice
+test.indices <- sample(1:nrow(TrainDF_clean), index)
+# set de entrenamiento
+hogares_train<-TrainDF_clean[-test.indices,] 
+#30% set de testeo
+hogares_test<-TrainDF_clean[test.indices,] 
+#Seleccionar el set de entrenamiento en variables independientes y dependientes
+YTrain <- hogares_train$Pobre
+XTrain <- hogares_train %>% dplyr::select(-Pobre)
+#Seleccionar el set de testeo en variables independientes y dependientes
+YTest <- hogares_test$Pobre
+XTest <- hogares_test %>% dplyr::select(- Pobre)
+
+#Balancear la muestra de pobres
+#Paquete que me hace el resamsampling teniendo en cuenta la proporción 50-50
+p_load(ROSE)
+hogares_train <- dplyr::select(hogares_train, -id, -Dominio, -Depto, -OfJefe)
+hogares_train$Pobre <- as.numeric(hogares_train$Pobre)
+hogares_train_bal <- ovun.sample(Pobre ~ ., data = hogares_train, method="both", p=0.5, seed = 1948)
+hogares_train_bal <- hogares_train_bal$data
+table(hogares_train_bal$Pobre)
+hogares_train_bal <- dplyr::select(hogares_train_bal, -Ingtotug, -Ingpcug)
+YTrain_bal <- hogares_train_bal$Pobre
+XTrain_bal <- dplyr::select(hogares_train_bal, -Pobre)
+
+XTest <- hogares_test %>% dplyr::select(-id, -Dominio, -Depto, -OfJefe, -Ingtotug, -Ingpcug, -Pobre)
+
+#Modelo Random Forest
+p_load(caret)
+p_load(randomForest)
+
+
+set.seed(1948)
+trControl <- trainControl(method='repeatedcv', 
+                          number=5, 
+                          repeats=1,
+                          allowParallel = TRUE,
+                          summaryFunction = multiClassSummary)
+
+ModeloForestTodo <- train(
+                      as.factor(Pobre) ~ .,
+                      data = hogares_train_bal,
+                      method = "rf",
+                      trControl = trControl,
+                      maxnode = 5,
+                      metric = "Sens",
+                      ntree = 300)
+
+
+ModeloForestTodo
+plot(ModeloForestTodo)
+varImp(ModeloForestTodo,scale=TRUE)
+
+pred_RF <- predict(ModeloForestTodo, XTest)
+
+confusionMatrix(table(YTest, pred_RF))
+
+p_load(ROCR)
+
+YProb_RF <- predict(ModeloForestTodo, XTest, type ="prob")
+pred_RFs <- prediction(YProb_RF[,2], as.numeric(YTest))
+perf_RFs <- performance(pred_RFs,"tpr","fpr")
+
+aucRFs <- performance(pred_RFs,"auc")@y.values
+aucRFs
+
+plot(perf_RFs,colorize=TRUE)
+
+#Se guardan los valores porque el modelo se demora 2 horas corriendo
+AccuracyRF = 0.6667
+AUCRF = 0.8365954
+PrecisionRF = 24133/(1155+24133)
+SensitivityRF = 24133/(24133+15341) 
+SpecificityRF = 8859/ (8859+1155)
+
+
+#---------------- Modelos con variables específicas-------------------------
+
 require(caret)
 require("gtsummary")
 TrainDF_clean$Pobre <- haven::as_factor(TrainDF_clean$Pobre)
@@ -787,6 +869,55 @@ with(testResults,table(Pobre,mylogit_lasso_smote))
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #%    Income Regression Models 		          %
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#--------Modelo XGboost---------------------
+#Se crea la base a utilizar
+YTestReg <- hogares_test$Ingtotug
+hogares_trainReg <- hogares_train %>% dplyr::select(-Ingpcug, -Pobre)
+YTrainReg <- hogares_trainReg$Ingtotug
+XTrainReg <- hogares_trainReg %>% dplyr::select(-Ingtotug)
+
+
+set.seed(1948)
+trControl1 <- trainControl(method='repeatedcv', 
+                          number=5, 
+                          repeats=1,
+                          allowParallel = TRUE)
+
+
+grid_default <- expand.grid(nrounds = c(250,500),
+                            max_depth = c(4,5,6),
+                            eta = c(0.05),
+                            gamma = c(0.01),
+                            min_child_weight = c(10, 25, 50),
+                            colsample_bytree = c(0.7),
+                            subsample = c(0.6))
+
+ModeloXGBoost <- train(
+              Ingtotug ~ .,
+              data = hogares_trainReg,
+              method = "xgbTree",
+              trControl = trControl1,
+              tuneGrid = grid_default)
+
+
+ModeloXGBoost
+varImp(ModeloXGBoost,scale=TRUE)
+
+YhatXG <-predict(ModeloXGBoost, XTest)
+MSEXG <- sum((YTestReg-YhatXG)^2)/length(YTestReg)
+RMSEXG <- sqrt(MSEXG)
+
+MSEXGValor = 3495298557010.06
+RMSEGValor = 1869571.75
+
+XTestXG <- cbind(XTest, YhatXG)
+XTestXG$PobrePredict <- ifelse(XTestXG$YhatXG > XTestXG$Npersug*XTestXG$Lp, 0, 1)
+confusionMatrix(table(YTest, XTestXG$PobrePredict))
+
+
+#------------------------------------------------------------------------------
+
 
 ##Se busca cuál es el mejor subset 
 require("leaps")
