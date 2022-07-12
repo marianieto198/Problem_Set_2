@@ -494,120 +494,295 @@ testDF <- dummy_cols(testDF, select_columns = categoricas,
 #%    Classification Models   		          %
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-index <-  round(nrow(finaldata)*0.3,digits=0)
-#Muestra aleatorizada del  dataset y mantener el número de observaciones del indice
-test.indices <- sample(1:nrow(finaldata), index)
-# set de entrenamiento
-hogares_train<-finaldata[-test.indices,] 
-#30% set de testeo
-hogares_test<-finaldata[test.indices,] 
-#Seleccionar el set de entrenamiento en variables independientes y dependientes
-YTrain <- hogares_train$Pobre
-XTrain <- hogares_train %>% dplyr::select(-Pobre)
-#Seleccionar el set de testeo en variables independientes y dependientes
-YTest <- hogares_test$Pobre
-XTest <- hogares_test %>% dplyr::select(- Pobre)
+require(caret)
+require("gtsummary")
+TrainDF_clean$Pobre <- haven::as_factor(TrainDF_clean$Pobre)
+TrainDF_clean$P5090 <- haven::as_factor(TrainDF_clean$P5090)
+tbl_summary(TrainDF_cleanF)
+tbl_summary(TrainDF_cleanF,by = Pobre, statistic = list(all_continuous() ~ "{mean} ({sd})"))
 
-#Balancear la muestra de pobres
-#Paquete que me hace el resamsampling teniendo en cuenta la proporción 50-50
-p_load(ROSE)
-hogares_train <- dplyr::select(hogares_train, -id, -Dominio, -Depto, -OfJefe)
-hogares_train$Pobre <- as.numeric(hogares_train$Pobre)
-hogares_train_bal <- ovun.sample(Pobre ~ ., data = hogares_train, method="both", p=0.5, seed = 1948)
-hogares_train_bal <- hogares_train_bal$data
-table(hogares_train_bal$Pobre)
-hogares_train_bal <- dplyr::select(hogares_train_bal, -Ingtotug, -Ingpcug, )
-YTrain_bal <- hogares_train_bal$Pobre
-XTrain_bal <- dplyr::select(hogares_train_bal, -Pobre)
+##Se crean tres bases la de testeo, evaluación y prueba
+set.seed(112)
+split1 <- createDataPartition(TrainDF_clean$Pobre, p = .7)[[1]]
+length(split1)
+##Longitud de 115.471 observaciones
+levels(TrainDF_clean$Pobre) <- c("No_Pobre", "Pobre")
+
+other <- TrainDF_clean[-split1,]
+training <- TrainDF_clean[ split1,]
+
+set.seed(123)
+split2 <- createDataPartition(other$Pobre, p = 1/3)[[1]]
+evaluation <- other[ split2,]
+testing <- other[-split2,]
+
+dim(training) ##115471 observaciones
+dim(testing) ##32990 observaciones
+dim(evaluation) ##16496 observaciones
+
+##Se prueban diferentes modelos para encontrar el más pertinente 
+
+#Método de validación cruzada con cinco folds
+ctrl_def <- trainControl(method = "cv",
+                         number = 5,
+                         summaryFunction = defaultSummary,
+                         classProbs = TRUE,
+                         verbose=FALSE,
+                         savePredictions = T)
+
+#Logit
+set.seed(1234)
+mylogit_caret_def <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = training,
+  method = "glm", #for logit
+  trControl = ctrl_def,
+  family = "binomial",
+  preProcess = c("center", "scale")
+)
+mylogit_caret_def
+##Accuracy de 0.80 y Kappa de 0.11
+
+ctrl_two <- trainControl(method = "cv",
+                         number = 5,
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE,
+                         verbose=FALSE,
+                         savePredictions = T)
+
+set.seed(1410)
+mylogit_caret_two <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = training,
+  method = "glm", #for logit
+  trControl = ctrl_two,
+  family = "binomial",
+  preProcess = c("center", "scale")
+)
+
+mylogit_caret_two
+
+##ROC: 0.76 Sens: 0.98 SPEC: 0.08
+
+fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
+ctrl<- trainControl(method = "cv",
+                    number = 5,
+                    summaryFunction = fiveStats,
+                    classProbs = TRUE,
+                    verbose=FALSE,
+                    savePredictions = T)
+#logit
+set.seed(18414)
+mylogit_caret <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = training,
+  method = "glm", #for logit
+  trControl = ctrl,
+  family = "binomial",
+  preProcess = c("center", "scale")
+)
+
+mylogit_caret
+
+#Sensibilidad del 98%
+
+#Lasso
+lambda_grid <- 10^seq(-4, 0.01, length = 10) #en la practica se suele usar una grilla de 200 o 300
+lambda_grid
+
+set.seed(58694)
+mylogit_lasso_acc <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = training,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "Accuracy",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+
+mylogit_lasso_acc
+##Sensibilidad 0.97-0.99
+
+set.seed(2452)
+mylogit_lasso_roc <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = training,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "ROC",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+
+mylogit_lasso_roc
+##Sensibilidad 0.97-0.99
+
+set.seed(1410)
+mylogit_caret_sens <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = training,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "Sens",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+
+mylogit_caret_sens 
+
+##Alternate cutoffs
+
+evalResults <- data.frame(Pobre = evaluation$Pobre)
+evalResults$Roc <- predict(mylogit_lasso_roc,
+                           newdata = evaluation,
+                           type = "prob")[,1]
+
+library(pROC)
+rfROC <- roc(evalResults$Pobre, evalResults$Roc, levels = rev(levels(evalResults$Pobre)))
+rfROC
+## Area under the curve: 0.7698
+
+rfThresh <- coords(rfROC, x = "best", best.method = "closest.topleft")
+rfThresh
+
+## threshold specificity sensitivity
+## 0.7948547   0.6968504   0.6949371
+
+evalResults<-evalResults %>% mutate(hat_def_05=ifelse(evalResults$Roc>0.5,"No Pobre","Pobre"),
+                                    hat_def_rfThresh=ifelse(evalResults$Roc>rfThresh$threshold,"Pobre","No Pobre"))
+with(evalResults,table(Pobre,hat_def_05))
+##       hat_def_05
+##Pobre      No Pobre Pobre
+##No_Pobre    12932   262
+##Pobre        2836   466
+
+with(evalResults,table(Pobre,hat_def_rfThresh))
+##        hat_def_rfThresh
+##Pobre      No Pobre Pobre
+##No_Pobre     4025  9169
+##Pobre        2301  1001
 
 
+##Remuestreo
 
+set.seed(1103)
+upSampledTrain <- upSample(x = training,
+                           y = training$Pobre,
+                           ## keep the class variable name the same:
+                           yname = "Pobre")
+dim(training)
+dim(upSampledTrain)
+table(upSampledTrain$Pobre)
 
-#Regresion de solo el intercepto
-Modelobase <- glm(Pobre ~ 1, data = hogares_train)
-stargazer(Modelobase, type ="text")
-mean(hogares_train$Ingtotugarr)
+##Up-sampling
 
+set.seed(1410)
+mylogit_lasso_upsample <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = upSampledTrain,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "ROC",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
 
-#El intercepto es la media de los ingresos totales de las personas (2300900)
-#Ahora estimamos nuestros modelos planteados
-#Modelo General
-ModeloGeneral<- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean), data = hogares_train)
-stargazer(ModeloGeneral, type ="text")
+mylogit_lasso_upsample
 
-##K-nearest neighbors
+##0.65-0.69
 
-#Se estandarizan los datos 
+##Down sampling
 
-#x <- scale(fgl[,1:28]) 
-#apply(x,2,sd)
+set.seed(1103)
+downSampledTrain <- downSample(x = training,
+                               y = training$Pobre,
+                               ## keep the class variable name the same:
+                               yname = "Pobre")
+dim(training)
+dim(downSampledTrain)
+table(downSampledTrain$Pobre)
 
+set.seed(1410)
+mylogit_lasso_downsample <- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = downSampledTrain,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "ROC",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+mylogit_lasso_downsample
 
-#set.seed(1010101)
-#test <- sample(1:214,10)
-#nearest1 <- knn(train=x[-test,], test=x[test,], cl=finaldata$type[-test], k=1)
-#nearest5 <- knn(train=x[-test,], test=x[test,], cl=finaldata$type[-test], k=5)
-#data.frame(finaldata$type[test],nearest1,nearest5)
+##0.69-0.65
 
+##SMOTE
+require("smotefamily")
+predictors<-c("Clase", "JefeMujer", "OcupadoJefe", "HorasTrabJefe", "Nper", "EducacionJefe_2",  "EducacionJefe_3", "EducacionJefe_4", "EducacionJefe_5", "EducacionJefe_6", "TiempoEmpresaJefe", "EdadJefe")
 
-##Sobre esta regresión
-mylogit <- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
-               data = hogares_train, family = "binomial")
-test$phat<- predict(mylogit, test, type="response")
+head(training[predictors])
+smote_output = SMOTE(X = training[predictors],
+                     target = training$Pobre)
+oversampled_data = smote_output$data
+table(training$Pobre)
+table(oversampled_data$class)
 
-credx <- model.matrix(Pobre ~ .^2, data=hogares_train)
-dim(credx)
+set.seed(1410)
+mylogit_lasso_smote<- train(
+  Pobre ~ Clase + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  data = oversampled_data,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "ROC",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+mylogit_lasso_smote
 
-credx <- sparse.model.matrix( Pobre ~ .^2, data=hogares_train)[,-1]
-head(credx)
+##Se realizan las comparaciones
+testResults <- data.frame(Pobre = testing$Pobre)
+testResults$logit<- predict(mylogit_caret,
+                            newdata = testing,
+                            type = "prob")[,1]
+testResults$lasso<- predict(mylogit_lasso_roc,
+                            newdata = testing,
+                            type = "prob")[,1]
+testResults$lasso_thresh<- predict(mylogit_lasso_roc,
+                                   newdata = testing,
+                                   type = "prob")[,1]
+testResults$lasso_upsample<- predict(mylogit_lasso_upsample,
+                                     newdata = testing,
+                                     type = "prob")[,1]
+testResults$mylogit_lasso_downsample<- predict(mylogit_lasso_downsample,
+                                               newdata = testing,
+                                               type = "prob")[,1]
+testResults$mylogit_lasso_smote<- predict(mylogit_lasso_smote,
+                                          newdata = testing,
+                                          type = "prob")[,1]
 
-Pobre <- credit$Pobre
-Pobertyscore <- cv.gamlr(credx, Pobre, family="binomial", verb=TRUE)
-plot(credscore)
+##Evaluación en el test
+testResults<-testResults %>%
+  mutate(logit=ifelse(logit>0.5,"No Pobre","Pobre"),
+         lasso=ifelse(lasso>0.5,"No Pobre","Pobre"),
+         lasso_thresh=ifelse(lasso_thresh>rfThresh$threshold,"No Pobre","Pobre"),
+         lasso_upsample=ifelse(lasso_upsample>0.5,"No Pobre","Pobre"),
+         mylogit_lasso_downsample=ifelse(mylogit_lasso_downsample>0.5,"No Pobre","Pobre"),
+         mylogit_lasso_smote=ifelse(mylogit_lasso_smote>0.5,"No Pobre","Pobre"),
+  )
+with(testResults,table(Pobre,logit))
+with(testResults,table(Pobre,lasso))
+with(testResults,table(Pobre,lasso_thresh))
+with(testResults,table(Pobre,lasso_upsample))
+with(testResults,table(Pobre,mylogit_lasso_downsample))
+with(testResults,table(Pobre,mylogit_lasso_smote))
 
-pred <- predict(Pobertyscore$gamlr, credx, type="response")
-pred <- drop(pred) # remove the sparse Matrix formatting
-boxplot(pred ~ Pobre, xlab="Pobre", ylab="prob de Pobreza", col=c("pink","dodgerblue"))
-
-rule <- 1/2
-sum( (pred>rule)[default==0] )/sum(pred>rule) ## false positive rate
-
-sum( (pred<rule)[default==1] )/sum(pred<rule) ## false negative rate
-
-sum( (pred>rule)[default==1] )/sum(default==1) ## sensitivity
-
-sum( (pred<rule)[default==0] )/sum(default==0) ## specificity
-
-test$Pobre_hat<-ifelse(test$phat>.5,1,0)
-with(test,prop.table(table(Pobre,Pobre_hat)))
-
-pred <- prediction(test$phat, test$Pobre)
-roc_ROCR <- performance(pred,"tpr","fpr")
-plot(roc_ROCR, main = "ROC curve", colorize = T)
-abline(a = 0, b = 1)
-
-auc_ROCR <- performance(pred, measure = "auc")
-auc_ROCR@y.values[[1]]
-
-mylda <- lda(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
-             data = hogares_train)
-mylda
-
-phat_mylda<- predict(mylda, test, type="response")
-pred_mylda <- prediction(phat_mylda$posterior[,2], test$Pobre)
-roc_mylda <- performance(pred_mylda,"tpr","fpr")
-plot(roc_mylda, main = "ROC curve", colorize = T)
-abline(a = 0, b = 1)
-
-plot(roc_ROCR, main = "ROC curve", colorize = FALSE, col="red")
-plot(roc_mylda,add=TRUE, colorize = FALSE, col="blue")
-abline(a = 0, b = 1)
-
-auc_ROCR <- performance(pred, measure = "auc")
-auc_ROCR_lda_simple <- performance(pred_mylda, measure = "auc")
-auc_ROCR@y.values[[1]]
-
-auc_ROCR_lda_simple@y.values[[1]]
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #%    Income Regression Models 		          %
