@@ -156,7 +156,7 @@ TrainJefeHogar <- TrainJefeHogar %>% dplyr::select(id, Mujer, Edad, P6090, P6210
                                 P6610, P6620, P6630s1, P6630s2, P6630s3, P6630s4, P6630s6,
                                 P6800, P6920, P7040, P7045, P7090, P7495, Pet, Oc, Des, Ina)
 #Cambiamos nombres
-TrainJefeHogar <- TrainJefeHogar %>% dplyr::rename(JejeMujer = Mujer, EdadJefe = Edad, SSJefe = P6090, EducacionJefe = P6210, ActividadJefe = P6240, OfJefe = Oficio, 
+TrainJefeHogar <- TrainJefeHogar %>% dplyr::rename(JefeMujer = Mujer, EdadJefe = Edad, SSJefe = P6090, EducacionJefe = P6210, ActividadJefe = P6240, OfJefe = Oficio, 
                                                    TiempoEmpresaJefe = P6426, TipoTrabajoJefe = P6430,  JefeHorasExtras = P6510, JefePrimas = P6545,
                                                    BonosJefe = P6580, SubAliJefe = P6585s1, SubTranJefe = P6585s2, SubFamiliarJefe = P6585s3, SubEducativo = P6585s4, 
                                                    AlimentosJefe = P6590, ViviendaJefe = P6600, 
@@ -177,7 +177,7 @@ testJefeHogar <- testJefeHogar %>% dplyr::select(id, Mujer, Edad, P6090, P6210, 
                                                    P6610, P6620, P6630s1, P6630s2, P6630s3, P6630s4, P6630s6,
                                                    P6800, P6920, P7040, P7045, P7090, P7495, Pet, Oc, Des, Ina)
 #Cambiamos nombres
-testJefeHogar <- testJefeHogar %>% dplyr::rename(JejeMujer = Mujer, EdadJefe = Edad, SSJefe = P6090, EducacionJefe = P6210, ActividadJefe = P6240, OfJefe = Oficio, 
+testJefeHogar <- testJefeHogar %>% dplyr::rename(JefeMujer = Mujer, EdadJefe = Edad, SSJefe = P6090, EducacionJefe = P6210, ActividadJefe = P6240, OfJefe = Oficio, 
                                                    TiempoEmpresaJefe = P6426, TipoTrabajoJefe = P6430,  JefeHorasExtras = P6510, JefePrimas = P6545,
                                                    BonosJefe = P6580, SubAliJefe = P6585s1, SubTranJefe = P6585s2, SubFamiliarJefe = P6585s3, SubEducativo = P6585s4, 
                                                    AlimentosJefe = P6590, ViviendaJefe = P6600, 
