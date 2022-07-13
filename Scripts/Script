@@ -1221,12 +1221,12 @@ XTrainReg <- hogares_trainReg %>% dplyr::select(-Ingtotug)
 
 set.seed(1948)
 trControl1 <- trainControl(method='repeatedcv', 
-                          number=5, 
-                          repeats=1,
-                          allowParallel = TRUE)
+                           number=5, 
+                           repeats=1,
+                           allowParallel = TRUE)
 
 
-grid_default <- expand.grid(nrounds = c(250,500),
+  grid_default <- expand.grid(nrounds = c(250,500),
                             max_depth = c(4,5,6),
                             eta = c(0.05),
                             gamma = c(0.01),
@@ -1235,13 +1235,14 @@ grid_default <- expand.grid(nrounds = c(250,500),
                             subsample = c(0.6))
 
 ModeloXGBoost <- train(
-              Ingtotug ~ .,
-              data = hogares_trainReg,
-              method = "xgbTree",
-              trControl = trControl1,
-              tuneGrid = grid_default)
+  Ingtotug ~ .,
+  data = hogares_trainReg,
+  method = "xgbTree",
+  trControl = trControl1,
+  tuneGrid = grid_default)
 
 
+plot(ModeloXGBoost)
 ModeloXGBoost
 varImp(ModeloXGBoost,scale=TRUE)
 
@@ -1257,58 +1258,266 @@ XTestXG$PobrePredict <- ifelse(XTestXG$YhatXG > XTestXG$Npersug*XTestXG$Lp, 0, 1
 confusionMatrix(table(YTest, XTestXG$PobrePredict))
 
 
-#------------------------------------------------------------------------------
+#---------------Lasso y Ridge-----------------------------------------------------
 
+#Seleccionamos la base y la modificamos. La variable dependiente sera Ingtotug
+#Se eliminan las variables que miden lo mismo 
 
-##Se busca cuál es el mejor subset 
-require("leaps")
+hogares_train_ing<- dplyr::select(hogares_train,-Ingpcug, -Ingtotugarr, -Pobre)
+hogares_test_ing <- dplyr::select(hogares_test, -id, -Dominio, -Depto, -OfJefe, -Ingpcug, -Ingtotugarr, -Pobre)
 
-##Esto no puede ser realizada con una gran cantidad de observaciones 
-best<-regsubsets(Pobre ~ ., method="exhaustive",data = finaldata)
-summary(best)
+#Se crean las variables de entrenamiento 
+YTrain_ing <- hogares_train_ing$Ingtotug
+XTrain_ing <- dplyr::select(hogares_train_ing,-Ingtotug)
 
-##Ahora, para comparar los resultados del subset se utilizan otras alternativas de estimación de éste.
-forward <- train(Pobre ~ ., data = finaldata,
-                 method = "leapForward",
-                 trControl = trainControl(method = "cv", number = 10))
-forward
+#Se crean las variables de test 
+YTest_ing<-hogares_test_ing$Ingtotug
+XTest_ing<-dplyr::select(hogares_test_ing,-Ingtotug)
 
-summary(forward$finalModel)
+#Estimacion modelo OLS 
+modelo_OLS_ing<-lm(Ingtotug~ ., data = hogares_train_ing)
+summary(modelo_OLS_ing) #Adjuted R-squared 0.3113
+#Coeficientes del modelo OLS 
+mt_coeficientes_ing <- modelo_OLS_ing$coefficients %>%
+  enframe(name = "predictor", value = "coeficiente")
 
-backwards <- train(Pobre ~ ., data = matchdata,
-                   method = "leapBackward",
-                   trControl = trainControl(method = "cv", number = 10))
-backwards
+mt_coeficientes_ing %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() +
+  labs(title = "Coeficientes del modelo OLS Ingreso") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 5, angle = 45))
+#Predicciones y MSE 
+#Base de entrenamiento 
+pred_OLS_train_ing<- predict(modelo_OLS_ing, newdata = hogares_train_ing)
+OLS_training_mse_ing <- mean((pred_OLS_train_ing - YTrain_ing)^2)
+paste("Error (mse) de entrenamiento:",OLS_training_mse_ing)
+#Base de prueba 
+pred_OLS_test_ing <- predict(modelo_OLS_ing, newdata = hogares_test_ing)
+OLS_test_mse_ing<-mean((pred_OLS_test_ing - YTest_ing)^2)
+paste("Error (mse) de test:", OLS_test_mse_ing)
 
-summary(backwards$finalModel)
+#Regularizacion - Ridge 
+require(glmnet)
 
-##Para correr el modelo de Pobreza se verifica la mejor manera de plantear la variable dependiente
-# Primero seleccionamos las columnas numéricas
-filtro <- sapply(finaldata, is.numeric)
-sk <- sapply(finaldata[, filtro], skewness, na.rm = T)
+#Se crean las matrices de entrenamiento y test 
+x_train_ridge_ing <- model.matrix(Ingtotug~., data =hogares_train_ing)[, -1]
+y_train_ridge_ing <- hogares_train_ing$Ingtotug
 
-# Vamos a buscar las variables con las mayores asimetrías sin importar la dirección
-sk_abs <- abs(sk)
-sk_abs <- data.frame(sk_abs)
-sk_abs <- rownames_to_column(sk_abs, "variable")
-sk_abs <- arrange(sk_abs, desc(sk_abs))
+x_test_ridge_ing <- model.matrix(Ingtotug~., data = hogares_test_ing)[, -1]
+y_test_ridge_ing <- hogares_test_ing$Ingtotug
+#Creacion de modelo
+#Para Ridge el alpha debe ser igual a 0 
+modelo_ridge_ing <- glmnet(
+  x           = x_test_ridge_ing,
+  y           = y_test_ridge_ing,
+  alpha       = 0,
+  nlambda     = 100,
+  standardize = TRUE
+)
 
-# Las variables con mayor asimetría son:
-head(sk_abs)
+#Cambio de coeficientes en funcion de lambda 
+regularizacion_ridge_ing <- modelo_ridge_ing$beta %>% 
+  as.matrix() %>%
+  t() %>% 
+  as_tibble() %>%
+  mutate(lambda = modelo_ridge_ing$lambda)
 
-head(sk_abs)
+regularizacion_ridge_ing<- regularizacion_ridge_ing %>%
+  pivot_longer(
+    cols = !lambda, 
+    names_to = "predictor",
+    values_to = "coeficientes"
+  )
 
-hist(finaldata$Ingtotugarr)
+regularizacion_ridge_ing %>%
+  ggplot(aes(x = lambda, y = coeficientes, color = predictor)) +
+  geom_line() +
+  scale_x_log10(
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
+  labs(title = "Coeficientes del modelo en función de la regularización Ingreso") +
+  theme_bw() +
+  theme(legend.position = "none")
 
+#MSE en funcion de lambda
+set.seed(0711)
+cv_error_ridge_ing <- cv.glmnet(
+  x      = x_train_ridge_ing,
+  y      = y_train_ridge_ing,
+  alpha  = 0,
+  nfolds = 10,
+  type.measure = "mse",
+  standardize  = TRUE
+)
+
+plot(cv_error_ridge_ing)
+
+#Encontramos el lambda que minimiza MSE 
+paste("Mejor valor de lambda encontrado:", cv_error_ridge_ing$lambda.min)
+#Mayor lambda que no se aleja más de 1 desviacion estandar del minimo 
+paste("Mejor valor de lambda encontrado + 1 desviación estándar:", cv_error_ridge_ing$lambda.1se)
+
+#Estimamos modelo usando mejor valor lambda mas una desviacion estandar 
+modelo_lambda_ods_ing <- glmnet(
+  x           = x_train_ridge_ing,
+  y           = y_train_ridge_ing,
+  alpha       = 0,
+  lambda      = cv_error_ridge_ing$lambda.min,
+  standardize = TRUE
+)
+
+#Analisis de coeficientes 
+df_coeficientes_ridge <- coef(modelo_lambda_ods_ing) %>%
+  as.matrix() %>%
+  as_tibble(rownames = "predictor") %>%
+  rename(coeficiente = s0)
+
+df_coeficientes_ridge %>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() +
+  labs(title = "Coeficientes del modelo Ridge") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 6, angle = 45))
+#Predicciones Ridge Train 
+pred_ridge_train_ing <- predict(modelo_lambda_ods_ing, newx = x_train_ridge_ing)
+#MSE train 
+ridge_training_mse_ing <- mean((pred_ridge_train_ing - y_train_ridge_ing)^2)
+paste("Error (mse) de entrenamiento:", ridge_training_mse_ing)
+#Predicciones Ridge Test 
+pred_ridge_test_ing <- predict(modelo_lambda_ods_ing, newx = x_test_ridge_ing)
+#MSE test 
+test_mse_ridge_ing <- mean((pred_ridge_test_ing - y_test_ridge_ing)^2)
+paste("Error (mse) de test:", test_mse_ridge_ing)
+
+#Regularizacion - Lasso 
+#Matrices de entrenamiento y test
+x_train_lasso_ing <- model.matrix(Ingtotug~., data = hogares_train_ing)[, -1]
+y_train_lasso_ing <- hogares_train_ing$Ingtotug
+
+x_test_lasso_ing <- model.matrix(Ingtotug~., data = hogares_test_ing)[, -1]
+y_test_lasso_ing <- hogares_test_ing$Ingtotug
+
+#Creacion del modelo 
+modelo_ing_lasso <- glmnet(
+  x           = x_train_lasso_ing,
+  y           = y_train_lasso_ing,
+  alpha       = 1,
+  nlambda     = 100,
+  standardize = TRUE
+)
+
+#Coeficientes en funcion de lambda 
+regularizacion_lasso_ing <- modelo_ing_lasso$beta %>% 
+  as.matrix() %>%
+  t() %>% 
+  as_tibble() %>%
+  mutate(lambda = modelo_ing_lasso$lambda)
+
+regularizacion_lasso_ing <- regularizacion_lasso_ing %>%
+  pivot_longer(
+    cols = !lambda, 
+    names_to = "predictor",
+    values_to = "coeficientes"
+  )
+regularizacion_lasso_ing %>%
+  ggplot(aes(x = lambda, y = coeficientes, color = predictor)) +
+  geom_line() +
+  scale_x_log10(
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
+  labs(title = "Coeficientes del modelo en función de la regularización Ingreso") +
+  theme_bw() +
+  theme(legend.position = "none")
+#MSE en funcion de lambda 
+set.seed(0711)
+cv_error_lasso_ing <- cv.glmnet(
+  x      = x_train_lasso_ing,
+  y      = y_train_lasso_ing,
+  alpha  = 1,
+  nfolds = 10,
+  type.measure = "mse",
+  standardize  = TRUE
+)
+
+plot(cv_error_lasso_ing)
+
+#Mejor lambda determinado 
+paste("Mejor valor de lambda encontrado:", cv_error_lasso_ing$lambda.min)
+
+#Mejor lambda a una desviacion estandar 
+paste("Mejor valor de lambda encontrado + 1 desviación estándar:", cv_error_lasso_ing$lambda.1se)
+
+#Estimacion de modelo con lambda optimo 
+modelo_op_lasso_ing <- glmnet(
+  x           = x_train_lasso_ing,
+  y           = y_train_lasso_ing,
+  alpha       = 1,
+  lambda      = cv_error_lasso_ing$lambda.min,
+  standardize = TRUE
+)
+
+#Coeficientes 
+df_coef_lasso_ing<- coef(modelo_op_lasso_ing) %>%
+  as.matrix() %>%
+  as_tibble(rownames = "predictor") %>%
+  rename(coeficiente = s0)
+
+df_coef_lasso_ing%>%
+  filter(predictor != "(Intercept)") %>%
+  ggplot(aes(x = predictor, y = coeficiente)) +
+  geom_col() +
+  labs(title = "Coeficientes del modelo Lasso") +
+  theme_bw() +
+  theme(axis.text.x = element_text(size = 6, angle = 45))
+
+df_coef_lasso_ing %>%
+  filter(
+    predictor != "(Intercept)",
+    coeficiente != 0
+  ) 
+
+#Predicciones Ridge Train 
+pred_lasso_train_ing <- predict(modelo_op_lasso_ing
+                                , newx = x_train_lasso_ing)
+#MSE train 
+lasso_training_mse_ing <- mean((pred_lasso_train_ing - y_train_lasso_ing)^2)
+paste("Error (mse) de entrenamiento:", lasso_training_mse_ing)
+#Predicciones Ridge Test 
+pred_lasso_test_ing <- predict(modelo_op_lasso_ing, newx = x_test_lasso_ing)
+#MSE test 
+lasso_test_mse_ing <- mean((pred_lasso_test_ing - y_test_lasso_ing)^2)
+paste("Error (mse) de test:", lasso_test_mse_ing)
+
+#-----------------Resultados preliminares regresion----------------------------------
+#Se puede ver que en los modelos XGboost y Lasso hay un mayor peso de algunas variables.
+#En el caso de XGBoost las variables más importantes son Arriendo (que se crea apartir de P5130 y P5140,
+#Si no cotiza a pensión, el número de cuartos, la edad del jefe del hogar, si recibe ingresos por arriendo o pension,
+#La educación del jefe del hogar, el tipo de vivienda que viven, y el tiempo que lleva en la empresa)
+#Con esto en mente se crearán nuevos modelos para ser más precisos.
+#Por otro lado, se utilizará la variable ingtotugarr porque vimos que tiene una relación muy grande con la variable
+# arriendo y además es la que se usa para medir la linea de pobreza de los hogares
+
+MSEValores <- c(OLS_test_mse_ing, test_mse_ridge_ing, lasso_test_mse_ing, MSEXG)
+RMSEValores <- sapply(MSEValores, sqrt)
+ModeloNombre <- c("Modelo OLS", "Modelo Ridge", "Modelo Lasso", "Modelo XGBoost")
+
+ResultadosInicialesRegresio <- data.frame(ModeloNombre, MSEValores, RMSEValores)
+
+#--------------Elegir la distribución del ingreso----------------------------
 # Construimos el vector de los ingresos y eliminamos los NAs 
-x <- finaldata$Ingtotugarr[!is.na(finaldata$Ingtotugarr)]
-x <- finaldata$Ingtotugarr[finaldata$Ingtotugarr!=0]
+x <- hogares_train$Ingtotugarr[!is.na(hogares_train$Ingtotugarr)]
+x <- hogares_train$Ingtotugarr[hogares_train$Ingtotugarr!=0]
 sk_x <- skewness(x)
 print(paste("El valor de skewness para los ingresos totales es", round(sk_x, 2)))
-##El Skewness es de 5.6
+##El Skewness es de 5.37
 
-x <- log(finaldata$Ingtotugarr[!is.na(finaldata$Ingtotugarr)])
-x <- finaldata$Ingtotugarr[finaldata$Ingtotugarr!=0]
+x <- log(hogares_train$Ingtotugarr[!is.na(hogares_train$Ingtotugarr)])
+x <- hogares_train$Ingtotugarr[hogares_train$Ingtotugarr!=0]
 sk_x <- skewness(x)
 print(paste("El valor de skewness para los ingresos totales es", round(sk_x, 2)))
 
@@ -1321,11 +1530,10 @@ lambda <- boxcox(x, objective.name = "Log-Likelihood",
 box_cox_x <- boxcoxTransform(x, lambda)
 
 ing_totimputado <- data.frame("Ingresos totales" = x,
-                      "Logaritmo" = log(x),
-                      "Raiz cuadrada" = sqrt(x),
-                      "Inversa" = 1/x,
-                      "Box-Cox" = box_cox_x)
-
+                              "Logaritmo" = log(x),
+                              "Raiz cuadrada" = sqrt(x),
+                              "Inversa" = 1/x,
+                              "Box-Cox" = box_cox_x)
 
 # Observemos la distribución original
 p1 <- ggplot(ing_totimputado) +
@@ -1391,268 +1599,87 @@ ggarrange(p1, p2, p3, p4, p5, nrow = 3, ncol = 2)
 (p1 | p2 | p3) /
   (p4 | p5)
 
-##Se concluye que la variable dependiente con un menor skewness es con la distribución 
+##Se concluye que la variable dependiente con un menor skewness es con la distribución Box-Cox, aunque la logarítmica
+#También tiene un bajo skewness, y para transformación es mucho más fácil. Por tal motivo se usará el logaritmo
+#Para predecir los ingresos
+
+glimpse(hogares_train)
+
+#----------Modelo 5 Elastic Net-------
+el <- train(
+  Ingtotugarr ~ Arriendo + PensionJefe_2 + P5000 + ArriendosPenJefe_2 + as.factor(P5090) , data = hogares_train, method = "glmnet",
+  trControl = trainControl("cv", number = 10), preProcess = c("center", "scale"))
+
+plot(el)
+el
+
+YhatEl <- predict(el, hogares_test)
+MSEtest_el <- mean((YTest_ing - YhatEl)^2)
+paste("Error (mse) de test:", MSEtest_el)
+RMSE_el <- sqrt(MSEtest_el)
+
+ModeloElStats <- c("Elastic Net", MSEtest_el, RMSE_el)
+
+ResultadosInicialesRegresio <- rbind(ResultadosInicialesRegresio, ModeloElStats)
 
 
-##Para identificar los predictores que efectivamente van en el modelo y los que no se aplica Lasso
-##Se analizan las variables para identificar correlaciones y posibles problemas a la hora de
-##Utilizar modelos de regresión lineal 
-finaldatatrain <- sapply(finaldata, is.numeric)
-finaldatatrain <- na.omit(hogares_train)
+#-----------------Modelo 6------------------
+ModeloPv <- lm(Ingtotugarr ~ Arriendo + PensionJefe_2 + JefeMujer + EdadJefe + as.factor(P5090) + HorasTrabJefe, 
+               data = hogares_train)
 
-hogares_correlaciones <- finaldata %>%
-  correlate(method = "pearson") %>%
-  stretch(remove.dups = TRUE)
+summary(ModeloPv)
 
-correlaciones <- hogares_correlaciones %>% 
-  mutate(r_abs = abs(r)) %>% 
-  arrange(desc(r_abs)) %>%
-  mutate(r_abs = replace_na(r_abs, 0))
+YModeloPv <- predict(ModeloPv, hogares_test)
+MSEtestModeloPV <- mean((YTest_ing - YModeloPv)^2)
+RMSE_Pv <- sqrt(MSEtestModeloPV)
+ModeloPvStats <- c("Modelo Pv", MSEtestModeloPV, RMSE_Pv)
 
-sum(correlaciones$r_abs > 0.8)/nrow(correlaciones)
+ResultadosInicialesRegresio <- rbind(ResultadosInicialesRegresio, ModeloPvStats)
 
-##Creación del modelo
+#------Modelo Ridge 7-----------
 
-modelo <- glm(Pobreza ~ ., data = hogares_train)
-summary(modelo)
+set.seed(1948)
 
-hogares_coeficientes <- modelo$coefficients %>%
-  enframe(name = "predictor", value = "coeficiente")
+lambda = 10^seq(-2, 3, length = 10)
+ridge_caret<- train(Ingtotugarr ~ JefeMujer + EdadJefe + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 + EducacionJefe_6 + ActividadJefe_2 + ActividadJefe_3 + ActividadJefe_4 + ActividadJefe_5 + ActividadJefe_6,
+                    data = hogares_train, 
+                    method = "glmnet",
+                    trControl = trainControl("cv", number = 10),
+                    preProcess = c("center","scale"),
+                    tuneGrid = expand.grid(alpha = 0,
+                                           lambda = lambda))
 
-hogares_coeficientes %>%
-  filter(predictor != "(Intercept)") %>%
-  ggplot(aes(x = predictor, y = coeficiente)) +
-  geom_col() +
-  labs(title = "Coeficientes del modelo OLS") +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 5, angle = 45))
+plot(ridge_caret)
+ridge_caret
+summary(ridge_caret)
 
-# Predicciones de entrenamiento
-predicciones_train <- predict(modelo, newdata = hogares_train)
+Yridge_caret <- predict(ridge_caret, hogares_test)
+MSEtestridge_caret <- mean((YTest_ing - Yridge_caret)^2)
+RMSE_rc <- sqrt(MSEtestridge_caret)
+ridge_caretStats <- c("Modelo RidgeEducacionYActividad", MSEtestridge_caret, RMSE_rc)
 
-# 
-training_mse <- mean((predicciones_train - hogares_train$Pobre)^2)
-paste("Error (mse) de entrenamiento:", training_mse)
-
-# Predicciones de test
-predicciones_test <- predict(modelo, newdata = hogares_test)
-
-# MSE de test
-test_mse_ols <- mean((predicciones_test - hogares_test$Pobre)^2)
-paste("Error (mse) de test:", test_mse_ols)
-
-# Creación y entrenamiento del modelo
-# Para obtener un ajuste con regularización Ridge se indica argumento alpha=0.
-# Si no se especifica valor de lambda, se selecciona un rango automático.
-modelo <- glmnet(
-  x           = x_train,
-  y           = y_train,
-  alpha       = 0,
-  nlambda     = 100,
-  standardize = TRUE
-)
-
-regularizacion <- modelo$beta %>% 
-  as.matrix() %>%
-  t() %>% 
-  as_tibble() %>%
-  mutate(lambda = modelo$lambda)
-
-regularizacion <- regularizacion %>%
-  pivot_longer(
-    cols = !lambda, 
-    names_to = "predictor",
-    values_to = "coeficientes"
-  )
-
-regularizacion %>%
-  ggplot(aes(x = lambda, y = coeficientes, color = predictor)) +
-  geom_line() +
-  scale_x_log10(
-    breaks = trans_breaks("log10", function(x) 10^x),
-    labels = trans_format("log10", math_format(10^.x))
-  ) +
-  labs(title = "Coeficientes del modelo en función de la regularización") +
-  theme_bw() +
-  theme(legend.position = "none")
-
-# Evolución del error en función de lambda
-set.seed(123)
-cv_error <- cv.glmnet(
-  x      = x_train,
-  y      = y_train,
-  alpha  = 0,
-  nfolds = 10,
-  type.measure = "mse",
-  standardize  = TRUE
-)
-
-plot(cv_error)
-
-# Mejor valor lambda encontrado
-paste("Mejor valor de lambda encontrado:", cv_error$lambda.min)
-
-# Mayor valor de lambda con el que el test-error no se aleja más de 1sd del mínimo.
-paste("Mejor valor de lambda encontrado + 1 desviación estándar:", cv_error$lambda.1se)
-
-# Mejor modelo lambda óptimo + 1sd
-modelo <- glmnet(
-  x           = x_train,
-  y           = y_train,
-  alpha       = 0,
-  lambda      = cv_error$lambda.1se,
-  standardize = TRUE
-)
-
-# Coeficientes del modelo
-hogares_coeficientes <- coef(modelo) %>%
-  as.matrix() %>%
-  as_tibble(rownames = "predictor") %>%
-  rename(coeficiente = s0)
-
-hogares_coeficientes %>%
-  filter(predictor != "(Intercept)") %>%
-  ggplot(aes(x = predictor, y = coeficiente)) +
-  geom_col() +
-  labs(title = "Coeficientes del modelo Ridge") +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 6, angle = 45))
-
-# Predicciones de entrenamiento
-predicciones_train <- predict(modelo, newx = x_train)
-
-# MSE de entrenamiento
-training_mse <- mean((predicciones_train - y_train)^2)
-paste("Error (mse) de entrenamiento:", training_mse)
-
-# Predicciones de test
-
-predicciones_test <- predict(modelo, newx = x_test)
-
-# MSE de test
-test_mse_ridge <- mean((predicciones_test - y_test)^2)
-paste("Error (mse) de test:", test_mse_ridge)
-## Lasso y ridge son sesgados, pero las disminuciones en varianza pueden compensar esto y llevar a un MSE menor
-
-#:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-##A partir de los resultados y de la teoría económica se definen los modelos:
-
-##Modelo 0
-model3<-lm(price~bedrooms+bathrooms+centair+fireplace+brick,data=train)
-test$model3<-predict(model3,newdata = test)
-with(test,mean((price-model3)^2))
+ResultadosInicialesRegresio <- rbind(ResultadosInicialesRegresio, ridge_caretStats)
+write.csv(ResultadosInicialesRegresio,"ResultadosDeModelos.csv", row.names = FALSE)
 
 
-#Modelo 1
-set.seed(10101)
-p_load("caret")
-trControl_1 <- trainControl(method  = "cv",
-                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+#---------Creacion de CVS---------------
 
-Modelo1_cv <- train(logIng ~ female + estrato1 + p6426 + maxEducLevel,
-                    data = geih.train,
-                    trControl = trControl_1,
-                    method = "lm")
-Modelo1_cv
-Modelo1_cv_Yhat <- predict(Modelo1_cv, XTest)
-RMSE_Modelo1_cv <- sqrt(sum((Modelo1_cv_Yhat-logYtest)^2)/length(logYtest))
+#Después de correr varios modelos, se muestra que el modelo con menor error es el de XGBoost.
+#Estos son los resultados con la evaluación del train
+XTestXG <- cbind(XTest, YhatXG)
+XTestXG$PobrePredict <- ifelse(XTestXG$YhatXG > XTestXG$Npersug*XTestXG$Lp, 0, 1)
+confusionMatrix(table(YTest, XTestXG$PobrePredict))
 
-#Modelo 2
-set.seed(10101)
-trControl_2 <- trainControl(method  = "cv",
-                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+#Ahora se hará el predict con la base de test final
+testDF$SSJefe_3 <- 0
 
-Modelo2_cv <- train(logIng ~ female + p6426 + maxEducLevel + female*maxEducLevel,
-                    data = geih.train,
-                    trControl = trControl_2,
-                    method = "lm")
-Modelo2_cv
-Modelo2_cv_Yhat <- predict(Modelo2_cv, XTest)
-RMSE_Modelo2_cv <- sqrt(sum((Modelo2_cv_Yhat-logYtest)^2)/length(logYtest))
+IngtotUgArrHat <- predict(ModeloXGBoost, testDF)
+testDF <- cbind(testDF[-1,], IngtotUgArrHat)
+testDF$PobrePredict <- ifelse(testDF$IngtotUgArrHat > testDF$Npersug*testDF$Lp, 0, 1)
 
-#Modelo 3
-set.seed(10101)
-trControl_3 <- trainControl(method  = "cv",
-                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
+testFinalReg <-data.frame(id = testDF$id, Pobre_classificationReg = testDF$PobrePredict)
+write.csv(testFinalReg,"predictions_Lopez_Jaime_Nieto_RegresionXGBoost.csv", row.names = FALSE)
 
-Modelo3_cv <- train(logIng ~ female + p6426 + age + age2 + p6426*age,
-                    data = geih.train,
-                    trControl = trControl_3,
-                    method = "lm")
-Modelo3_cv
-Modelo3_cv_Yhat <- predict(Modelo3_cv, XTest)
-RMSE_Modelo3_cv <- sqrt(sum((Modelo3_cv_Yhat-logYtest)^2)/length(logYtest))
-
-#Modelo 4
-set.seed(10101)
-trControl_4 <- trainControl(method  = "cv",
-                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
-
-Modelo4_cv <- train(logIng ~ female + p6426 + informal + p6240 + p7090 + totalHoursWorked2 + totalHoursWorked3,
-                    data = geih.train,
-                    trControl = trControl_4,
-                    method = "lm")
-Modelo4_cv
-Modelo4_cv_Yhat <- predict(Modelo4_cv, XTest)
-RMSE_Modelo4_cv <- sqrt(sum((Modelo4_cv_Yhat-logYtest)^2)/length(logYtest))
-
-#Modelo 5
-set.seed(10101)
-trControl_5 <- trainControl(method  = "cv",
-                            number  = 10) #funcion para realizar la cross validation dentro de train dividir en 10 folds
-
-Modelo5_cv <- train(logIng ~ female + p6426 + totalHoursWorked + age + totalHoursWorked*female + p7090*female,
-                    data = geih.train,
-                    trControl = trControl_5,
-                    method = "lm")
-Modelo5_cv
-Modelo5_cv_Yhat <- predict(Modelo5_cv, XTest)
-RMSE_Modelo5_cv <- sqrt(sum((Modelo5_cv_Yhat-logYtest)^2)/length(logYtest))
-
-#Sigue siendo mejor el modelo 4
-RMSE_CVs <- c(RMSE_Modelo1_cv, RMSE_Modelo2_cv, RMSE_Modelo3_cv, RMSE_Modelo4_cv, RMSE_Modelo5_cv)
-
-#Revisamos los alphas del Modelo 4:
-Resid_j_CV <- (logYtest - Modelo4_cv_Yhat)
-Alpha_j_CV <- (Resid_j_CV)/(1-h_j)
-Df_Cv_M4 <- data.frame(logYtest, Modelo4_cv_Yhat, h_j, Resid_j_CV, Alpha_j_CV)
-#Mismo comportamiento, las observaciones con altos h_j no influyen en la muestra
-
-
-##Graph MSE by Fitted models 
-
-##Hallar el precision y el recall para cada modelo
-
-mylogit <- glm(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean),
-               data = hogares_train, family = "binomial")
-test$phat<- predict(mylogit, test, type="response")
-
-test$Pobre_hat<-ifelse(test$phat>.5,1,0)
-with(test,prop.table(table(Default,Pobre_hat)))
-
-pred <- prediction(test$phat, test$Pobre)
-roc_ROCR <- performance(pred,"tpr","fpr")
-plot(roc_ROCR, main = "ROC curve", colorize = T)
-abline(a = 0, b = 1)
-
-auc_ROCR <- performance(pred, measure = "auc")
-auc_ROCR@y.values[[1]]
-
-mylda <- lda(Pobre~ factor(Clase) + factor(Estrato1.mean) + Nper + factor(P6210c.mean), data = hogares_train)
-mylda
-
-phat_mylda<- predict(mylda, test, type="response")
-pred_mylda <- prediction(phat_mylda$posterior[,2], test$Pobre)
-roc_mylda <- performance(pred_mylda,"tpr","fpr")
-plot(roc_mylda, main = "ROC curve", colorize = T)
-abline(a = 0, b = 1)
-
-plot(roc_ROCR, main = "ROC curve", colorize = FALSE, col="red")
-plot(roc_mylda,add=TRUE, colorize = FALSE, col="blue")
-abline(a = 0, b = 1)
-
-auc_ROCR <- performance(pred, measure = "auc")
-auc_ROCR_lda_simple <- performance(pred_mylda, measure = "auc")
-auc_ROCR@y.values[[1]]
-
-auc_ROCR_lda_simple@y.values[[1]]
+library(readr)
+ModeloClasificacion <- read_delim("predictions_Lopez_Jaime_Nieto_c9_rx.csv", 
+                                                  delim = ";", escape_double = FALSE, trim_ws = TRUE)
