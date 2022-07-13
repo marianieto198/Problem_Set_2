@@ -629,7 +629,7 @@ ctrl_def <- trainControl(method = "cv",
 #Logit- fijo la semilla y aplico un logit con función binomial y las variables escaladas
 set.seed(1234)
 mylogit_caret_def <- train(
-  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
+  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glm", #for logit
   trControl = ctrl_def,
@@ -651,7 +651,7 @@ ctrl_two <- trainControl(method = "cv",
 
 set.seed(1234)
 mylogit_caret_two <- train(
-  Pobre ~ Arriendo + PensionJefe_2+ TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
+  Pobre ~ Arriendo + PensionJefe_2+ TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glm", #for logit
   trControl = ctrl_two,
@@ -672,7 +672,7 @@ ctrl<- trainControl(method = "cv",
 #logit
 set.seed(18414)
 mylogit_caret <- train(
-  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
+  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glm", #for logit
   trControl = ctrl,
@@ -693,7 +693,7 @@ lambda_grid
 
 set.seed(58694)
 mylogit_lasso_acc <- train(
-  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
+  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glmnet",
   trControl = ctrl,
@@ -710,7 +710,7 @@ mylogit_lasso_acc
 
 set.seed(58694)
 mylogit_ridge_acc <- train(
-  Pobre ~ Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
+  Pobre ~ Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glmnet",
   trControl = ctrl,
@@ -726,7 +726,7 @@ mylogit_ridge_acc
 ##Cambiando la métrica por la cual se elige el lambda se encontró que 
 set.seed(2452)
 mylogit_lasso_roc <- train(
-  Pobre ~ Arriendo + PensionJefe_2  + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
+  Pobre ~ Arriendo + PensionJefe_2  + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glmnet",
   trControl = ctrl,
