@@ -579,7 +579,17 @@ SpecificityRF = 8859/ (8859+1155)
 require(caret)
 require("gtsummary")
 TrainDF_clean$Pobre <- haven::as_factor(TrainDF_clean$Pobre)
+testDF$Clase_2 <- haven::as_factor(testDF$Clase_2)
 TrainDF_clean$Clase_2 <- haven::as_factor(TrainDF_clean$Clase_2)
+TrainDF_clean$TipoTrabajoJefe_1 <- haven::as_factor(TrainDF_clean$TipoTrabajoJefe_1)
+TrainDF_clean$PensionJefe_2 <- haven::as_factor(TrainDF_clean$PensionJefe_2)
+TrainDF_clean$EducacionJefe_6 <- haven::as_factor(TrainDF_clean$EducacionJefe_6)
+TrainDF_clean$OcupadoJefe <- haven::as_factor(TrainDF_clean$OcupadoJefe)
+TrainDF_clean$P5090 <- haven::as_factor(TrainDF_clean$P5090)
+
+
+
+
 tbl_summary(TrainDF_cleanF)
 tbl_summary(TrainDF_cleanF,by = Pobre, statistic = list(all_continuous() ~ "{mean} ({sd})"))
 
@@ -616,7 +626,7 @@ ctrl_def <- trainControl(method = "cv",
 #Logit- fijo la semilla y aplico un logit con función binomial y las variables escaladas
 set.seed(1234)
 mylogit_caret_def <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glm", #for logit
   trControl = ctrl_def,
@@ -638,7 +648,7 @@ ctrl_two <- trainControl(method = "cv",
 
 set.seed(1234)
 mylogit_caret_two <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Arriendo + PensionJefe_2+ TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glm", #for logit
   trControl = ctrl_two,
@@ -659,7 +669,7 @@ ctrl<- trainControl(method = "cv",
 #logit
 set.seed(18414)
 mylogit_caret <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glm", #for logit
   trControl = ctrl,
@@ -680,7 +690,7 @@ lambda_grid
 
 set.seed(58694)
 mylogit_lasso_acc <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glmnet",
   trControl = ctrl,
@@ -697,7 +707,7 @@ mylogit_lasso_acc
 
 set.seed(58694)
 mylogit_ridge_acc <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glmnet",
   trControl = ctrl,
@@ -713,7 +723,7 @@ mylogit_ridge_acc
 ##Cambiando la métrica por la cual se elige el lambda se encontró que 
 set.seed(2452)
 mylogit_lasso_roc <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Arriendo + PensionJefe_2  + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = training,
   method = "glmnet",
   trControl = ctrl,
@@ -782,7 +792,7 @@ table(upSampledTrain$Pobre)
 
 set.seed(1410)
 mylogit_lasso_upsample <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Arriendo + PensionJefe_2+ TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = upSampledTrain,
   method = "glmnet",
   trControl = ctrl,
@@ -814,7 +824,7 @@ downSampledTrain <- downSample(x = training,
                                yname = "Pobre")
 set.seed(1410)
 mylogit_lasso_downsample <- train(
-  Pobre ~ Clase_2 + JefeMujer + OcupadoJefe + HorasTrabJefe + Nper + EducacionJefe_2 + EducacionJefe_3 + EducacionJefe_4 + EducacionJefe_5 +EducacionJefe_6 + TiempoEmpresaJefe + EdadJefe,
+  Pobre ~ Arriendo + PensionJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe,
   data = downSampledTrain,
   method = "glmnet",
   trControl = ctrl,
@@ -855,40 +865,339 @@ testResults<-testResults %>%
          mylogit_lasso_downsample=ifelse(mylogit_lasso_downsample>0.5,"No Pobre","Pobre"),
   )
 with(testResults,table(Pobre,logit))
-##      logit
-##Pobre      No Pobre Pobre
-##No_Pobre    26114   272
-##Pobre        6017   587
+
+##        logit
+## Pobre      No Pobre Pobre
+## No_Pobre    25986   400
+## Pobre        5511  1093
+
+#Sensitivity 72.5 (1)- 73,2% (2)
 
 with(testResults,table(Pobre,lasso))
 
-##     lasso
-##Pobre      No Pobre Pobre
-##No_Pobre    25821   565
-##Pobre        5675   929
+##          lasso
+## Pobre      No Pobre Pobre
+## No_Pobre    25556   830
+## Pobre        5031  1573
 
+##Sensitivity 64,3% (1) -  65,4% (2)
 with(testResults,table(Pobre,lasso_thresh))
 
 ##   lasso_thresh
+##          lasso_thresh
 ##Pobre      No Pobre Pobre
-##No_Pobre    18353  8033
-##Pobre        1978  4626
+##No_Pobre    18859  7527
+##Pobre        1667  4937
+
+##Sensitivity 41.7% (1)- 39,6% (2)
 
 with(testResults,table(Pobre,lasso_upsample))
 
-## lasso_upsample
-##Pobre      No Pobre Pobre
-##No_Pobre    18313  8073
-##Pobre        1989  4615
+##          lasso_upsample
+## Pobre      No Pobre Pobre
+## No_Pobre    18767  7619
+## Pobre        1651  4953
+
+#sensit 40.5% (1) - 39,4 (2)
 
 with(testResults,table(Pobre,mylogit_lasso_downsample))
 
-##          mylogit_lasso_downsample
+##         mylogit_lasso_downsample
+## Pobre      No Pobre Pobre
+## No_Pobre    18739  7647
+## Pobre        1633  4971
+
+# sensit 40.4% (1) - 40,35% (2)
+
+#A simple vista se observa que existe una mayor sensibilidad e identificación de hogares pobres como
+##realmente pobres en el modelo logit esto es seguido del modelo lasso. 
+
+
+#*******Segundo modelo de regresión*******
+
+##Se prueban diferentes modelos para encontrar el más pertinente 
+
+#Método de validación cruzada con cinco folds- se corta en cinco la base
+ctrl_def <- trainControl(method = "cv",
+                         number = 5,
+                         summaryFunction = defaultSummary,
+                         classProbs = TRUE,
+                         verbose=FALSE,
+                         savePredictions = T)
+
+#Logit- fijo la semilla y aplico un logit con función binomial y las variables escaladas
+set.seed(1234)
+mylogit_caret_def <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = training,
+  method = "glm", #for logit
+  trControl = ctrl_def,
+  family = "binomial",
+  preProcess = c("center", "scale")
+)
+mylogit_caret_def
+##Al correr el logit con la base de training se obtiene un accuracy de 0.80 y Kappa de 0.11. Es decir, que un 80% de las observaciones totales
+##se clasificaron de manera correcta. El Kappa indica que hay poca concordancia entre los rates utilizados en el modelo. 
+
+##Se corre lo mismo pero sacar más métricas del modelo
+
+ctrl_two <- trainControl(method = "cv",
+                         number = 5,
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE,
+                         verbose=FALSE,
+                         savePredictions = T)
+
+set.seed(1234)
+mylogit_caret_two <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = training,
+  method = "glm", #for logit
+  trControl = ctrl_two,
+  family = "binomial",
+  preProcess = c("center", "scale")
+)
+
+mylogit_caret_two
+
+
+fiveStats <- function(...) c(twoClassSummary(...), defaultSummary(...))
+ctrl<- trainControl(method = "cv",
+                    number = 5,
+                    summaryFunction = fiveStats,
+                    classProbs = TRUE,
+                    verbose=FALSE,
+                    savePredictions = T)
+#logit
+set.seed(18414)
+mylogit_caret <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = training,
+  method = "glm", #for logit
+  trControl = ctrl,
+  family = "binomial",
+  preProcess = c("center", "scale")
+)
+
+mylogit_caret
+
+## El área bajo la curva (ROC) es del 0.76, la Sensibilidad es de un 98% es decir que se detectan correctamente el 98% de los pobres que en verdad son pobres, y la especificidad es de 0.08, es decir que un 8% de los verdaderos no pobres son clasificados como tal.
+##La métrica más relevante para este caso es la de sensibilidad debido a que quiero predecir los hogares debajo de la línea de pobreza.
+
+##Para verificar la pertinencia de incluir las variables especificadas con anterioridad en el modelo se utiliza lasso con una grilla de 200
+##A partir de esto se observa las diferentes penalizaciones y escogemos el lambda que maximiza la sensibilidad del modelo. Asimismo, se prueba Ridge y elastic net para elegir cuál funciona mejor.
+#Lasso
+lambda_grid <- 10^seq(-4, 0.01, length = 200) #en la practica se suele usar una grilla de 200 o 300
+lambda_grid
+
+set.seed(58694)
+mylogit_lasso_acc <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = training,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "Sens",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+
+mylogit_lasso_acc
+##Con un alpha de cero (lasso) el lambda óptimo es de 1.023293
+
+
+
+set.seed(58694)
+mylogit_ridge_acc <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = training,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "Sens",
+  tuneGrid = expand.grid(alpha = 1,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+
+mylogit_ridge_acc
+##Con un alpha de uno (Ridge) el lambda óptimo es de 1.023293
+
+##Cambiando la métrica por la cual se elige el lambda se encontró que 
+set.seed(2452)
+mylogit_lasso_roc <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = training,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "ROC",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+
+mylogit_lasso_roc
+##Con un alpha de cero (Lasso) el lambda óptimo a partir del ROC es de 0.009007891.
+##Los modelos anteriores están utilizando un cutoff de 1/2, por lo que busco el cutoff que se encuentre ubicado más cerca al ideal de la predicción del modelo
+##Alternate cutoffs- en la muestra de evaluación de post-procesamiento es donde busco los cortes alternativos
+
+evalResults <- data.frame(Pobre = evaluation$Pobre)
+evalResults$Roc <- predict(mylogit_lasso_roc,
+                           newdata = evaluation,
+                           type = "prob")[,1]
+
+library(pROC)
+rfROC <- roc(evalResults$Pobre, evalResults$Roc, levels = rev(levels(evalResults$Pobre)))
+plot(rfROC)
+## Area under the curve: 0.7611, quiero encontrar el corte que esté más cercano al corte superior izquierdo
+
+rfThresh <- coords(rfROC, x = "best", best.method = "closest.topleft")
+rfThresh
+
+## threshold specificity sensitivity
+## 0.7948547   0.6968504   0.6949371
+
+#Se compara con el punto de corte 1/2 y con el threshold de 0.79
+
+evalResults<-evalResults %>% mutate(hat_def_05=ifelse(evalResults$Roc>0.5,"No Pobre","Pobre"),
+                                    hat_def_rfThresh=ifelse(evalResults$Roc>rfThresh$threshold,"Pobre","No Pobre"))
+with(evalResults,table(Pobre,hat_def_05))
+##       hat_def_05
 ##Pobre      No Pobre Pobre
-##No_Pobre    18393  7993
-##Pobre        2010  4594
+##No_Pobre    12932   262
+##Pobre        2836   466
+
+with(evalResults,table(Pobre,hat_def_rfThresh))
+##        hat_def_rfThresh
+##Pobre      No Pobre Pobre
+##No_Pobre     4025  9169
+##Pobre        2301  1001
+
+##Se observa que con el threshold mejora la predicción de hogares pobres. 
+##El training es una estimación del modelo más optimista 
+
+##Remuestreo
+
+##Por el desbalanceo de pobres y no pobres, procedo a realizar up-sampling y down-sampling para que estén balanceadas 
+
+set.seed(1103)
+upSampledTrain <- upSample(x = training,
+                           y = training$Pobre,
+                           ## keep the class variable name the same:
+                           yname = "Pobre")
+dim(training)
+dim(upSampledTrain)
+table(upSampledTrain$Pobre)
+
+##Obtengo  92356  observaciones pobres y 92356 no pobres, la muestra está balanceada.
+
+##Up-sampling
+
+set.seed(1410)
+mylogit_lasso_upsample <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = upSampledTrain,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "Sens",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+
+mylogit_lasso_upsample
+
+##Nos brinda un lambda de 0.01305657
+
+##Down sampling-se corre con diferentes semillas para obtener datos más robustos
+
+set.seed(1103)
+downSampledTrain <- downSample(x = training,
+                               y = training$Pobre,
+                               ## keep the class variable name the same:
+                               yname = "Pobre")
+dim(training)
+dim(downSampledTrain)
+table(downSampledTrain$Pobre)
+
+set.seed(1104)
+downSampledTrain <- downSample(x = training,
+                               y = training$Pobre,
+                               ## keep the class variable name the same:
+                               yname = "Pobre")
+set.seed(1410)
+mylogit_lasso_downsample <- train(
+  Pobre ~ Arriendo + PensionJefe_2 + ArriendosPenJefe_2 + TipoTrabajoJefe_1  + Npersug + EducacionJefe_6 + P5090 + P5000 + EdadJefe + OcupadoJefe + HorasTrabJefe,
+  data = downSampledTrain,
+  method = "glmnet",
+  trControl = ctrl,
+  family = "binomial",
+  metric = "Sens",
+  tuneGrid = expand.grid(alpha = 0,lambda=lambda_grid),
+  preProcess = c("center", "scale")
+)
+mylogit_lasso_downsample
+
+##Nos brinda un lambda de 0.01305657
+
+##Ahora evalúo todo lo realizado con anterioridad sobre la base de testeo
+##Se realizan las comparaciones
+testResults <- data.frame(Pobre = testing$Pobre)
+testResults$logit<- predict(mylogit_caret,
+                            newdata = testing,
+                            type = "prob")[,1]
+testResults$lasso<- predict(mylogit_lasso_roc,
+                            newdata = testing,
+                            type = "prob")[,1]
+testResults$lasso_thresh<- predict(mylogit_lasso_roc,
+                                   newdata = testing,
+                                   type = "prob")[,1]
+testResults$lasso_upsample<- predict(mylogit_lasso_upsample,
+                                     newdata = testing,
+                                     type = "prob")[,1]
+testResults$mylogit_lasso_downsample<- predict(mylogit_lasso_downsample,
+                                               newdata = testing,
+                                               type = "prob")[,1]
+
+##Evaluación en el test
+testResults<-testResults %>%
+  mutate(logit=ifelse(logit>0.5,"No Pobre","Pobre"),
+         lasso=ifelse(lasso>0.5,"No Pobre","Pobre"),
+         lasso_thresh=ifelse(lasso_thresh>rfThresh$threshold,"No Pobre","Pobre"),
+         lasso_upsample=ifelse(lasso_upsample>0.5,"No Pobre","Pobre"),
+         mylogit_lasso_downsample=ifelse(mylogit_lasso_downsample>0.5,"No Pobre","Pobre"),
+  )
+with(testResults,table(Pobre,logit))
+
+#Sensitivity 72.5 (1)- 73,2% (2)
+
+with(testResults,table(Pobre,lasso))
+
+##Sensitivity 64,3% (1) -  65,4% (2)
+with(testResults,table(Pobre,lasso_thresh))
+
+##Sensitivity 41.7% (1)- 39,6% (2)
+
+with(testResults,table(Pobre,lasso_upsample))
+
+#sensit 40.5% (1) - 39,4 (2)
+
+with(testResults,table(Pobre,mylogit_lasso_downsample))
+
+# sensit 40.4% (1) - 40,35% (2)
+
+#A simple vista se observa que existe una mayor sensibilidad e identificación de hogares pobres como
+##realmente pobres en el modelo logit esto es seguido del modelo lasso. 
 
 
+#Seleccionar el set de testeo en variables independientes y dependientes
+XTest <- testDF
+XTest$lasso_thresh<- predict(mylogit_lasso_roc,
+                             newdata = testDF,
+                             type = "prob")[,1]
+
+phat <- predict(mylogit_lasso_roc,
+                             newdata = testDF)
+                             
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #%    Income Regression Models 		          %
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
