@@ -1682,4 +1682,9 @@ write.csv(testFinalReg,"predictions_Lopez_Jaime_Nieto_RegresionXGBoost.csv", row
 
 library(readr)
 ModeloClasificacion <- read_delim("predictions_Lopez_Jaime_Nieto_c9_rx.csv", 
-                                                  delim = ";", escape_double = FALSE, trim_ws = TRUE)
+                                                  delim = ",", escape_double = FALSE, trim_ws = TRUE)
+
+ResultadosFinales <- left_join(testFinalReg, ModeloClasificacion, by = "id")
+ResultadosFinales <- ResultadosFinales %>% rename(Pobre_income = Pobre_classificationReg)
+
+write.csv(ResultadosFinales,"predictions_Lopez_Jaime_Nieto_c8_r40.csv.csv", row.names = FALSE)
