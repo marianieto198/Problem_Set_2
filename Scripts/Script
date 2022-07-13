@@ -1191,12 +1191,18 @@ with(testResults,table(Pobre,mylogit_lasso_downsample))
 
 #Seleccionar el set de testeo en variables independientes y dependientes
 XTest <- testDF
-XTest$lasso_thresh<- predict(mylogit_lasso_roc,
-                             newdata = testDF,
-                             type = "prob")[,1]
-
-phat <- predict(mylogit_lasso_roc,
+XTest$mylogit_caret<- predict(mylogit_caret,
                              newdata = testDF)
+
+levels(XTest$mylogit_caret) <- c(0, 1)
+table(XTest$mylogit_caret)
+phat <- predict(mylogit_caret,
+                             newdata = testDF)
+
+
+testFinal<- data.frame(id = XTest$id, Pobre_classification = XTest$mylogit_caret)
+write.csv(testFinal,"predictions_Lopez_Jaime_Nieto_c9_rx.csv", row.names = FALSE)
+
                              
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #%    Income Regression Models 		          %
